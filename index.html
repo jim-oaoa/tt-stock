@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+  <meta name="description" content="用 TT 的魚模型估價法分析台股：魚頭魚身魚尾定價、EPS 拆解、杜邦分析，自動串接 FinMind 真實財報">
+  <meta property="og:title" content="TT 股票分析工具｜魚模型估價">
+  <meta property="og:description" content="魚頭魚身魚尾定價 · EPS 九步驟拆解 · 杜邦分析 · 串接 FinMind 財報">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TT 股票分析工具｜魚模型 · EPS · 杜邦</title>
+<style>
+:root {
+  --bg:#0f1117; --card:#1a1d27; --card2:#22263a; --border:#2e3352;
+  --accent:#4f8ef7; --green:#6fcf97; --orange:#f2994a; --red:#eb5757;
+  --text:#e8eaf6; --muted:#8892b0; --head:#ccd6f6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}
+
+/* ── API Bar ── */
+.api-bar{background:#12162a;border-bottom:2px solid var(--accent);padding:14px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.api-bar .title{font-weight:700;color:var(--head);font-size:15px;white-space:nowrap;margin-right:4px}
+.api-bar input{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;min-width:110px}
+.api-bar input:focus{outline:none;border-color:var(--accent)}
+#api-stock{width:100px}
+#api-token{width:260px}
+.btn-fetch{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;transition:opacity .2s}
+.btn-fetch:hover{opacity:.85}
+.btn-fetch:disabled{opacity:.5;cursor:wait}
+.api-help{font-size:11px;color:var(--muted);white-space:nowrap}
+.api-help a{color:var(--accent);text-decoration:none}
+#api-status{font-size:12px;padding:5px 12px;border-radius:6px;display:none;white-space:nowrap}
+#api-status.loading{background:rgba(79,142,247,.15);color:var(--accent);display:block}
+#api-status.success{background:rgba(111,207,151,.15);color:var(--green);display:block}
+#api-status.error{background:rgba(235,87,87,.15);color:var(--red);display:block}
+#api-period{font-size:11px;color:var(--muted);align-self:center}
+
+/* ── Header ── */
+.header{background:linear-gradient(135deg,#1a1d27,#12162a);padding:18px 28px;border-bottom:1px solid var(--border)}
+.header h1{font-size:20px;color:var(--head);font-weight:700}
+.header p{color:var(--muted);font-size:11px;margin-top:3px}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:2px;padding:14px 28px 0;background:var(--bg);border-bottom:1px solid var(--border)}
+.tab{padding:9px 18px;cursor:pointer;border-radius:8px 8px 0 0;color:var(--muted);font-size:13px;font-weight:500;border:1px solid transparent;border-bottom:none;transition:all .2s}
+.tab:hover{color:var(--text);background:var(--card)}
+.tab.active{color:var(--accent);background:var(--card);border-color:var(--border);border-bottom-color:var(--card)}
+
+/* ── Content ── */
+.content{padding:22px 28px}
+.pane{display:none}.pane.active{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── Cards ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+.card h3{color:var(--head);font-size:12px;font-weight:600;margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:7px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0}
+
+/* ── Fields ── */
+.field{margin-bottom:11px}
+.field label{display:block;color:var(--muted);font-size:11px;margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
+.field input,.field select{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 11px;color:var(--text);font-size:13px;transition:border-color .2s}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.hint{color:var(--muted);font-size:11px;margin-top:2px}
+
+/* ── Results ── */
+.rrow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(46,51,82,.5)}
+.rrow:last-child{border-bottom:none}
+.rrow .lbl{color:var(--muted);font-size:12px}
+.rrow .val{font-weight:600;color:var(--text);font-size:13px}
+.val.g{color:var(--green)}.val.o{color:var(--orange)}.val.r{color:var(--red)}.val.b{color:var(--accent)}
+
+/* ── EPS Chain ── */
+.eps-chain{display:flex;flex-direction:column;gap:7px}
+.eps-step{display:flex;justify-content:space-between;align-items:center;background:var(--card2);border-radius:7px;padding:9px 13px}
+.eps-step .sl{color:var(--muted);font-size:12px}
+.eps-step .sv{font-weight:600;color:var(--text)}
+.eps-step.hi{background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3)}
+.eps-step.hi .sv{color:var(--accent);font-size:18px}
+
+/* ── Fish Zones ── */
+.fish-zone{border-radius:9px;padding:14px 18px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.fish-zone .zname{font-weight:700;font-size:14px}
+.fish-zone .zrange{font-size:12px;opacity:.8}
+.fish-zone .ztag{font-size:11px;padding:2px 9px;border-radius:20px;background:rgba(255,255,255,.1)}
+.fz1{background:#1a3a2a;border:1px solid #2d6a4a}
+.fz2{background:#1a2d3a;border:1px solid #2d4a6a}
+.fz3{background:#2a2a1a;border:1px solid #6a6a2d}
+.fz4{background:#3a1a1a;border:1px solid #6a2d2d}
+
+/* ── DuPont ── */
+.dupont-box{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:14px 0}
+.d-item{text-align:center;background:var(--card2);border-radius:8px;padding:11px 14px;min-width:90px}
+.d-val{font-size:18px;font-weight:700;color:var(--accent)}
+.d-lbl{font-size:11px;color:var(--muted);margin-top:3px}
+.d-op{font-size:18px;color:var(--muted);font-weight:300}
+
+/* ── Gauge ── */
+.gauge-wrap{margin:14px 0}
+.gauge-bar{height:22px;border-radius:11px;background:linear-gradient(to right,#27ae60,#f39c12,#e74c3c);position:relative}
+.gauge-ptr{position:absolute;top:-5px;width:4px;height:32px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left .4s;box-shadow:0 0 4px rgba(0,0,0,.5)}
+.gauge-labels{display:flex;justify-content:space-between;margin-top:5px}
+.gauge-labels span{font-size:11px;color:var(--muted)}
+
+/* ── Misc ── */
+.note{background:rgba(79,142,247,.08);border:1px solid rgba(79,142,247,.2);border-radius:8px;padding:11px 15px;font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:14px}
+.note strong{color:var(--accent)}
+.presets{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.pbtn{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:5px 13px;cursor:pointer;font-size:12px;color:var(--muted);transition:all .2s}
+.pbtn:hover{border-color:var(--accent);color:var(--accent)}
+.price-bar{background:var(--card2);border:2px solid var(--accent);border-radius:10px;padding:13px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.price-bar .pb-price{font-size:22px;font-weight:700;color:var(--accent)}
+.zone-tag{font-size:12px;padding:4px 12px;border-radius:20px;font-weight:600}
+table.cmp{width:100%;border-collapse:collapse;font-size:13px}
+table.cmp th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;padding:7px 11px;border-bottom:1px solid var(--border)}
+table.cmp td{padding:9px 11px;border-bottom:1px solid rgba(46,51,82,.4)}
+table.cmp tr:last-child td{border-bottom:none}
+table.cmp .tv{text-align:right;font-weight:600}
+table.cmp tr:hover td{background:var(--card2)}
+
+/* ══════════════════════════════════════════════
+   手機版 RWD 補強 (≤600px)
+══════════════════════════════════════════════ */
+@media(max-width:600px){
+  /* API Bar */
+  .api-bar{padding:10px 14px;gap:8px}
+  .api-bar .title{font-size:13px;width:100%}
+  #api-stock{width:80px;min-width:80px}
+  #api-token{width:100%;flex:1 1 auto;min-width:0}
+  .api-help{display:none}          /* 手機隱藏申請說明 */
+  #api-status,#api-period{font-size:11px}
+
+  /* Header */
+  .header{padding:12px 14px}
+  .header h1{font-size:16px}
+  .header p{font-size:10px}
+
+  /* Tabs — 橫向滾動 */
+  .tabs{padding:8px 0 0;gap:0;overflow-x:auto;overflow-y:hidden;
+        flex-wrap:nowrap;-webkit-overflow-scrolling:touch;
+        scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:8px 13px;font-size:12px;white-space:nowrap;flex-shrink:0}
+
+  /* Content padding */
+  .content{padding:14px 12px}
+
+  /* Cards */
+  .card{padding:14px 12px}
+  .card h3{font-size:11px;margin-bottom:10px}
+
+  /* Fields */
+  .field input,.field select{font-size:14px;padding:9px 10px}
+
+  /* EPS 鏈 */
+  .eps-step{padding:8px 10px}
+  .eps-step .sl{font-size:11px}
+  .eps-step .sv{font-size:13px}
+
+  /* Fish zones */
+  .fish-zone{padding:11px 12px}
+  .fish-zone .zname{font-size:13px}
+
+  /* DuPont */
+  .dupont-box{gap:6px}
+  .d-item{min-width:70px;padding:8px 10px}
+  .d-val{font-size:15px}
+  .d-op{font-size:14px}
+
+  /* Price bar */
+  .price-bar{flex-direction:column;gap:6px;align-items:flex-start}
+  .price-bar .pb-price{font-size:18px}
+
+  /* Compare table */
+  table.cmp th,table.cmp td{padding:7px 8px;font-size:12px}
+
+  /* 預設 range */
+  .presets{gap:5px}
+  .pbtn{padding:4px 10px;font-size:11px}
+
+  /* 診斷面板 */
+  #api-diag{padding:6px 12px;font-size:10px;line-height:1.7}
+
+  /* rrow */
+  .rrow .lbl{font-size:11px}
+  .rrow .val{font-size:12px}
+}
+
+/* ── 手機橫向 (landscape) ── */
+@media(max-width:860px) and (orientation:landscape){
+  .header{padding:8px 16px}
+  .content{padding:12px 16px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ API Bar ══ -->
+<div class="api-bar">
+  <span class="title">🔗 串接財報</span>
+  <input id="api-stock" placeholder="股票代碼 2330" maxlength="10">
+  <input id="api-token" type="password" placeholder="FinMind API Token（免費）">
+  <button class="btn-fetch" id="btn-fetch" onclick="fetchData()">🔄 抓取</button>
+  <div class="api-help">尚未申請？<a href="https://finmindtrade.com/" target="_blank">finmindtrade.com 免費註冊 ↗</a> → 帳戶設定 → 取得Token</div>
+  <span id="api-status"></span>
+  <span id="api-period"></span>
+</div>
+<div id="api-diag" style="display:none;background:#0d1020;border-bottom:1px solid #2e3352;padding:8px 28px;font-size:11px;color:#8892b0;line-height:1.8;font-family:monospace"></div>
+
+<!-- ══ Header ══ -->
+<div class="header">
+  <h1>📊 TT 股票分析工具 v2</h1>
+  <p>複製 CMoney 熱門同學 TT 的估價模型 · 串接 FinMind 真實財報 · EPS預估 · 魚模型 · 杜邦分析</p>
+</div>
+
+<!-- ══ Tabs ══ -->
+<div class="tabs">
+  <div class="tab active" onclick="sw('eps')">① EPS 預估</div>
+  <div class="tab" onclick="sw('fish')">② 魚模型估價</div>
+  <div class="tab" onclick="sw('dupont')">③ 杜邦分析</div>
+  <div class="tab" onclick="sw('per')">④ 本益比評估</div>
+  <div class="tab" onclick="sw('shares')">⑤ 股本稀釋</div>
+</div>
+
+<div class="content">
+
+<!-- ── Tab 1: EPS ── -->
+<div class="pane active" id="pane-eps">
+  <div class="note">
+    <strong>TT 的 EPS 預估法：</strong>從損益表逐步拆解——預估營收 → 毛利率 → 營益率 → 業外收益率（占營收%）→ 所得稅率 → 扣非控制權益 → 母公司淨利 ÷ 加權平均<strong>張數×1000</strong> = EPS。
+    按上方「自動抓取財報」可用真實數據填入；或選下方快速載入範本。
+  </div>
+  <div class="presets">
+    <span style="font-size:12px;color:var(--muted);align-self:center">範本：</span>
+    <button class="pbtn" onclick="lp('tsmc')">台積電 2026Q1 實績</button>
+    <button class="pbtn" onclick="lp('tsmc_q2')">台積電 Q2 預估</button>
+    <button class="pbtn" onclick="lp('wiwynn')">緯穎 2026 預估</button>
+    <button class="pbtn" onclick="lp('foxconn')">鴻海</button>
+    <button class="pbtn" onclick="lp('clear')">清空</button>
+  </div>
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <h3><span class="dot"></span>① 營收</h3>
+        <div class="field"><label>年營收（億元台幣）</label>
+          <input type="number" id="revenue" value="12743" oninput="ce()">
+        </div>
+        <div class="field"><label>年增率（%，僅供顯示）</label>
+          <input type="number" id="rev_growth" value="36" oninput="ce()">
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--green)"></span>② 損益率假設</h3>
+        <div class="field"><label>毛利率（%）</label>
+          <input type="number" id="gross_margin" value="66.2" step="0.1" oninput="ce()">
+        </div>
+        <div class="field"><label>營業利益率 OPM（%）</label>
+          <input type="number" id="op_margin" value="58.1" step="0.1" oninput="ce()">
+          <div class="hint">= 毛利率 − 營業費用率</div>
+        </div>
+        <div class="field"><label>業外收益率（占營收%，可為負）</label>
+          <input type="number" id="non_op_rate" value="0.226" step="0.01" oninput="ce()">
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--orange)"></span>③ 稅率與股本</h3>
+        <div class="field"><label>有效所得稅率（%）</label>
+          <input type="number" id="tax_rate" value="16.72" step="0.1" oninput="ce()">
+        </div>
+        <div class="field"><label>非控制權益比例（%，無子公司填 0）</label>
+          <input type="number" id="minority" value="0" step="0.1" oninput="ce()">
+        </div>
+        <div class="field"><label>加權平均流通在外股數（<strong style="color:var(--orange)">張</strong>）</label>
+          <input type="number" id="shares_z" value="2593000" oninput="ce()">
+          <div class="hint">⚠ 輸入單位為「張」，工具自動 ×1000 換算成股再計算 EPS</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3><span class="dot" style="background:#bb6bd9"></span>損益計算鏈</h3>
+        <div class="eps-chain" id="eps-chain"></div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--accent)"></span>結果摘要</h3>
+        <div id="eps-summary"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab 2: Fish ── -->
+<div class="pane" id="pane-fish">
+  <div class="note">
+    <strong>TT 魚模型公式：</strong>調整淨值 = 每股淨值 + 其他權益項目（通常為負值）。
+    基準值 = 調整淨值 × (調整ROE ÷ 10%)。
+    魚頭（×0.85~1.0，便宜）→ 魚身（×1.0~1.15，合理）→ 魚尾（×1.15~1.30，偏貴）→ 瘋狂價（×2.0）。
+  </div>
+  <div class="presets">
+    <button class="pbtn" onclick="lfp('tsmc')">台積電 2026Q1</button>
+    <button class="pbtn" onclick="lfp('tsmc_q2')">台積電 Q2 預估</button>
+    <button class="pbtn" onclick="lfp('wiwynn')">緯穎</button>
+  </div>
+  <div class="grid2">
+    <div>
+      <div class="card">
+        <h3><span class="dot"></span>輸入財務數據</h3>
+        <div class="field"><label>每股淨值 BPS（元）</label>
+          <input type="number" id="bps" value="227.16" step="0.01" oninput="cf()">
+        </div>
+        <div class="field"><label>其他權益項目（元，未實現損益等，通常為負）</label>
+          <input type="number" id="other_eq" value="-1.44" step="0.01" oninput="cf()">
+          <div class="hint">調整淨值 = BPS + 此數（負值即扣除）</div>
+        </div>
+        <div class="field"><label>調整後 ROE（%，前四季）</label>
+          <input type="number" id="adj_roe" value="42.91" step="0.01" oninput="cf()">
+          <div class="hint">從財報 ROE 欄位取得；或≈前四季EPS ÷ 期初每股淨值×100</div>
+        </div>
+        <div class="field"><label>目前股價（元）</label>
+          <input type="number" id="cur_price" value="2085" oninput="cf()">
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--green)"></span>模型參數</h3>
+        <div class="rrow"><span class="lbl">調整淨值</span><span class="val b" id="f-adjbps">—</span></div>
+        <div class="rrow"><span class="lbl">調整 ROE</span><span class="val" id="f-roe">—</span></div>
+        <div class="rrow"><span class="lbl">ROE 倍率（÷10%）</span><span class="val" id="f-mult">—</span></div>
+        <div class="rrow"><span class="lbl">基準值</span><span class="val o" id="f-base">—</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="price-bar">
+        <div><div style="color:var(--muted);font-size:11px">目前股價</div>
+          <div class="pb-price" id="f-price-disp">—</div></div>
+        <span class="zone-tag" id="f-zone-tag"></span>
+      </div>
+      <div id="fish-zones"></div>
+      <div class="card" style="margin-top:14px">
+        <h3><span class="dot" style="background:var(--orange)"></span>各區說明</h3>
+        <div class="rrow"><span class="lbl" style="color:var(--green)">🐟 魚頭</span><span class="val" style="color:var(--green)">基準×0.85~1.0　便宜、可大膽買</span></div>
+        <div class="rrow"><span class="lbl" style="color:var(--accent)">🐟 魚身</span><span class="val" style="color:var(--accent)">基準×1.0~1.15　合理、正常持有</span></div>
+        <div class="rrow"><span class="lbl" style="color:var(--orange)">🐟 魚尾</span><span class="val" style="color:var(--orange)">基準×1.15~1.30　偏貴、考慮調節</span></div>
+        <div class="rrow"><span class="lbl" style="color:var(--red)">🔥 瘋狂</span><span class="val" style="color:var(--red)">基準×2.0　極度泡沫警戒</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab 3: DuPont ── -->
+<div class="pane" id="pane-dupont">
+  <div class="note">
+    <strong>TT 的杜邦分析：</strong>ROE = 稅後淨利率 × 總資產週轉率 × 權益乘數。
+    拆解後判斷 ROE 提升是靠「賺更多（淨利率↑）」、「做更大生意（週轉率↑）」還是「開槓桿（負債↑）」。TT 特別欣賞緯穎——ROE 48%、負債比僅 6 成，財務結構比廣達和緯創健全。
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3><span class="dot"></span>輸入財務數據（億元）</h3>
+      <div class="field"><label>稅後淨利（億元）</label><input type="number" id="d-ni" value="572.48" step="0.01" oninput="cd()"></div>
+      <div class="field"><label>年營收（億元）</label><input type="number" id="d-rev" value="12743" oninput="cd()"></div>
+      <div class="field"><label>總資產（億元）</label><input type="number" id="d-assets" value="49500" oninput="cd()"></div>
+      <div class="field"><label>股東權益合計（億元）</label><input type="number" id="d-eq" value="29400" oninput="cd()"></div>
+      <div class="field"><label>利息費用（億元，選填）</label><input type="number" id="d-int" value="0" step="0.01" oninput="cd()"></div>
+    </div>
+    <div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--green)"></span>杜邦拆解</h3>
+        <div class="dupont-box" id="dupont-box"></div>
+        <div id="dupont-eq" style="text-align:center;font-size:12px;color:var(--muted);margin-top:6px"></div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--orange)"></span>關鍵比率</h3>
+        <div id="dupont-ratios"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab 4: PER ── -->
+<div class="pane" id="pane-per">
+  <div class="note">
+    <strong>TT 的本益比分析：</strong>PER = 現價 ÷ 前四季EPS；PBR = 現價 ÷ 每股淨值。
+    TT 強調「健鼎 21× 是 PCB 族群中唯一接近合理的」，南電 240×、欣興 148× 屬於「瘋狂」。
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3><span class="dot"></span>個股輸入</h3>
+      <div class="field"><label>公司名稱</label><input type="text" id="p-name" value="台積電"></div>
+      <div class="field"><label>目前股價（元）</label><input type="number" id="p-price" value="2085" oninput="cp()"></div>
+      <div class="field"><label>前四季 EPS TTM（元）</label><input type="number" id="p-ttm" value="74.38" step="0.01" oninput="cp()"></div>
+      <div class="field"><label>預估今年 EPS（元）</label><input type="number" id="p-fwd" value="90" step="0.01" oninput="cp()"></div>
+      <div class="field"><label>每股淨值 BPS（元）</label><input type="number" id="p-bps" value="227.16" step="0.01" oninput="cp()"></div>
+    </div>
+    <div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--green)"></span>估值指標</h3>
+        <div id="per-res"></div>
+        <div class="gauge-wrap">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">PER 相對位置</div>
+          <div class="gauge-bar"><div class="gauge-ptr" id="g-ptr" style="left:50%"></div></div>
+          <div class="gauge-labels"><span>0×</span><span>15×合理</span><span>30×偏貴</span><span>50×+</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--orange)"></span>TT 引用 PCB 類股 PER 對照（2025）</h3>
+        <table class="cmp">
+          <tr><th>公司</th><th class="tv">PER</th><th class="tv">評語</th></tr>
+          <tr><td>南電</td><td class="tv r">240×</td><td class="tv" style="color:var(--muted)">瘋狂</td></tr>
+          <tr><td>欣興</td><td class="tv r">148×</td><td class="tv" style="color:var(--muted)">瘋狂</td></tr>
+          <tr><td>景碩</td><td class="tv r">122×</td><td class="tv" style="color:var(--muted)">瘋狂</td></tr>
+          <tr><td>台光電</td><td class="tv o">92×</td><td class="tv" style="color:var(--muted)">高</td></tr>
+          <tr><td>金像電</td><td class="tv o">61×</td><td class="tv" style="color:var(--muted)">偏貴</td></tr>
+          <tr><td>華通</td><td class="tv o">47×</td><td class="tv" style="color:var(--muted)">偏貴</td></tr>
+          <tr><td>臻鼎</td><td class="tv o">44×</td><td class="tv" style="color:var(--muted)">偏貴</td></tr>
+          <tr><td>健鼎</td><td class="tv g">21×</td><td class="tv g">相對合理</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tab 5: Shares ── -->
+<div class="pane" id="pane-shares">
+  <div class="note">
+    <strong>TT 的股本稀釋計算：</strong>ECB（海外可轉換公司債）轉換後股數膨脹，EPS 分母變大被低估。
+    TT 批評很多法人用舊股數算 EPS 因而高估。公式：新增張數 = 債券面額（美金）× 固定匯率 ÷ 轉換價 ÷ 1000。
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3><span class="dot"></span>ECB 稀釋計算</h3>
+      <div class="field"><label>ECB 未轉換總面額（百萬美金）</label><input type="number" id="ecb-usd" value="400" oninput="cs()"></div>
+      <div class="field"><label>固定轉換匯率（USD/TWD，ECB 公告時鎖定）</label><input type="number" id="ecb-rate" value="30.073" step="0.001" oninput="cs()"></div>
+      <div class="field"><label>每股轉換價格（元）</label><input type="number" id="ecb-cp" value="186.45" step="0.01" oninput="cs()"></div>
+      <div class="field"><label>目前流通在外張數（張）</label><input type="number" id="sh-now" value="1070142" oninput="cs()"></div>
+      <div class="field"><label>年初流通在外張數（張）</label><input type="number" id="sh-begin" value="954560" oninput="cs()"></div>
+      <div class="field"><label>預估轉換發生月份（1~12）</label><input type="number" id="sh-month" value="7" min="1" max="12" oninput="cs()"></div>
+    </div>
+    <div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--green)"></span>稀釋計算結果</h3>
+        <div id="shares-res"></div>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--orange)"></span>EPS 稀釋影響</h3>
+        <div class="field"><label>預計全年母公司稅後淨利（億元）</label>
+          <input type="number" id="net-for-eps" value="88.58" step="0.01" oninput="cs()">
+        </div>
+        <div id="dil-eps"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script>
+// ══════════════════════════════════════════════
+//  PRESETS（已修正股數單位：張）
+// ══════════════════════════════════════════════
+const PRESETS = {
+  tsmc:    {revenue:12743, rev_growth:36,  gross_margin:66.2, op_margin:58.1, non_op_rate:0.226, tax_rate:16.72, minority:0,    shares_z:2593000,  note:'台積電 2026Q1 實績（TT發文數據）'},
+  tsmc_q2: {revenue:12743, rev_growth:36,  gross_margin:58.5, op_margin:58.5, non_op_rate:0.232, tax_rate:16.7,  minority:0,    shares_z:2593000,  note:'台積電 2026Q2 預估（TT模型推算）'},
+  wiwynn:  {revenue:14000, rev_growth:47,  gross_margin:8.5,  op_margin:6.5,  non_op_rate:0.0,   tax_rate:22.5,  minority:0,    shares_z:172000,   note:'緯穎 2026 預估（TT 分析）'},
+  foxconn: {revenue:70000, rev_growth:12,  gross_margin:6.5,  op_margin:3.2,  non_op_rate:0.1,   tax_rate:25.0,  minority:18,   shares_z:13850000, note:'鴻海（參考值）'},
+  clear:   {revenue:0,     rev_growth:0,   gross_margin:0,    op_margin:0,    non_op_rate:0,     tax_rate:20,    minority:0,    shares_z:1000000,  note:''}
+};
+const FISH_P = {
+  tsmc:    {bps:227.16, other_eq:-1.44, adj_roe:42.91, cur_price:2085},
+  tsmc_q2: {bps:238.62, other_eq:-1.50, adj_roe:45.68, cur_price:2085},
+  wiwynn:  {bps:820,    other_eq:-20,   adj_roe:48.03, cur_price:3570}
+};
+
+function lp(k){
+  const p=PRESETS[k]; if(!p) return;
+  Object.keys(p).forEach(key=>{const el=document.getElementById(key); if(el) el.value=p[key];});
+  ce();
+}
+function lfp(k){
+  const p=FISH_P[k]; if(!p) return;
+  Object.keys(p).forEach(key=>{const el=document.getElementById(key); if(el) el.value=p[key];});
+  cf();
+}
+
+// ══════════════════════════════════════════════
+//  EPS 計算（股數單位修正：張 × 1000 = 股）
+// ══════════════════════════════════════════════
+function ce(){
+  const rev  = +v('revenue')      || 0;
+  const gm   = +v('gross_margin') / 100;
+  const om   = +v('op_margin')    / 100;
+  const nor  = +v('non_op_rate')  / 100;
+  const tax  = +v('tax_rate')     / 100;
+  const min  = +v('minority')     / 100;
+  const sz   = +v('shares_z')     || 1;     // 張
+  const sh   = sz * 1000;                   // 轉換成股
+
+  const gross   = rev * gm;
+  const opInc   = rev * om;
+  const nonOp   = rev * nor;
+  const preTax  = opInc + nonOp;
+  const afterTax= preTax * (1 - tax);
+  const parNet  = afterTax * (1 - min);
+  // EPS = 母公司淨利(億元) × 1e8(元/億) ÷ 股數
+  const eps = sh > 0 ? parNet * 1e8 / sh : 0;
+
+  const chain = document.getElementById('eps-chain');
+  chain.innerHTML =
+    step('營收', fm(rev)+' 億', '')
+   +step('毛利', fm(gross)+' 億', '毛利率 '+pc(gm))
+   +step('營業費用率', pc(gm-om), '= 毛利率 − 營益率')
+   +step('營業利益 (EBIT)', fm(opInc)+' 億', '營益率 '+pc(om))
+   +step('業外收益', fm(nonOp)+' 億', '占營收 '+v('non_op_rate')+'%')
+   +step('稅前淨利', fm(preTax)+' 億', '')
+   +step('所得稅', fm(preTax*tax)+' 億', '稅率 '+pc(tax))
+   +step('稅後淨利', fm(afterTax)+' 億', '')
+   +(min>0 ? step('非控制權益', fm(afterTax*min)+' 億', '少數股東 '+v('minority')+'%') : '')
+   +step('母公司稅後淨利', fm(parNet)+' 億', '')
+   +`<div class="eps-step hi"><span class="sl">▶ EPS</span><span class="sv">${eps.toFixed(2)} 元</span></div>`;
+
+  document.getElementById('eps-summary').innerHTML =
+    rr('年營收', fm(rev)+' 億')
+   +rr('年增率', '+'+v('rev_growth')+'%','g')
+   +rr('毛利率', v('gross_margin')+'%')
+   +rr('營益率 OPM', v('op_margin')+'%')
+   +rr('所得稅率', v('tax_rate')+'%')
+   +rr('加權張數', sz.toLocaleString()+' 張 = '+sh.toLocaleString()+' 股')
+   +rr('母公司稅後淨利', fm(parNet)+' 億','b')
+   +`<div style="background:rgba(79,142,247,.08);border:1px solid rgba(79,142,247,.3);border-radius:8px;padding:12px;margin-top:12px;text-align:center">
+       <div style="color:var(--muted);font-size:11px;margin-bottom:4px">預估 EPS</div>
+       <div style="font-size:38px;font-weight:800;color:var(--accent)">${eps.toFixed(2)}</div>
+       <div style="color:var(--muted);font-size:12px">元／股</div>
+     </div>`;
+}
+
+// ══════════════════════════════════════════════
+//  魚模型
+// ══════════════════════════════════════════════
+function cf(){
+  const bps   = +v('bps')      || 0;
+  const oeq   = +v('other_eq') || 0;
+  const roe   = +v('adj_roe')  || 0;
+  const price = +v('cur_price')|| 0;
+
+  const adjB = bps + oeq;
+  const mult = roe / 10;
+  const base = adjB * mult;
+  const z1lo=base*.85, z1hi=base, z2hi=base*1.15, z3hi=base*1.30, crazy=base*2;
+
+  document.getElementById('f-adjbps').textContent = adjB.toFixed(2)+' 元';
+  document.getElementById('f-roe').textContent    = roe.toFixed(2)+'%';
+  document.getElementById('f-mult').textContent   = mult.toFixed(2)+'×';
+  document.getElementById('f-base').textContent   = base.toFixed(2)+' 元';
+  document.getElementById('f-price-disp').textContent = price ? price+' 元' : '—';
+
+  let zone='—', zc='var(--accent)';
+  if(price>0){
+    if(price<z1lo)    {zone='⬇ 低於魚頭（超便宜）';zc='#6fcf97';}
+    else if(price<=z1hi){zone='🐟 魚頭區（便宜）';  zc='#6fcf97';}
+    else if(price<=z2hi){zone='🐟 魚身區（合理）';  zc='var(--accent)';}
+    else if(price<=z3hi){zone='🐟 魚尾區（偏貴）';  zc='var(--orange)';}
+    else if(price<crazy){zone='⚠ 接近瘋狂價';       zc='var(--orange)';}
+    else               {zone='🔥 瘋狂價（警戒）';   zc='var(--red)';}
+  }
+  const zt=document.getElementById('f-zone-tag');
+  zt.textContent=zone; zt.style.background=zc+'33'; zt.style.color=zc;
+
+  const pctOfBase = base>0 ? (price/base*100).toFixed(1) : '—';
+  document.getElementById('fish-zones').innerHTML =
+    fz('fz1','🐟 魚頭區','var(--green)',  z1lo.toFixed(1)+'~'+z1hi.toFixed(1)+' 元','×0.85~1.0')
+   +fz('fz2','🐟 魚身區','var(--accent)', z1hi.toFixed(1)+'~'+z2hi.toFixed(1)+' 元','×1.0~1.15')
+   +fz('fz3','🐟 魚尾區','var(--orange)', z2hi.toFixed(1)+'~'+z3hi.toFixed(1)+' 元','×1.15~1.30')
+   +fz('fz4','🔥 瘋狂價','var(--red)',    crazy.toFixed(1)+' 元','×2.0')
+   +(price>0?`<div style="margin-top:10px;padding:9px 15px;background:rgba(255,255,255,.04);border-radius:8px;font-size:12px;color:var(--muted)">
+      目前股價 <b style="color:var(--text)">${price}</b> 元 = 基準值的 <b style="color:${zc}">${pctOfBase}%</b></div>`:'');
+}
+
+// ══════════════════════════════════════════════
+//  杜邦分析
+// ══════════════════════════════════════════════
+function cd(){
+  const ni=+v('d-ni')||0, rev=+v('d-rev')||1, assets=+v('d-assets')||1;
+  const eq=+v('d-eq')||1, intr=+v('d-int')||0;
+  const nm=ni/rev, at=rev/assets, lev=assets/eq;
+  const roe=nm*at*lev, dr=(assets-eq)/assets;
+
+  document.getElementById('dupont-box').innerHTML =
+    `<div class="d-item"><div class="d-val" style="color:var(--green)">${pc(nm)}</div><div class="d-lbl">稅後淨利率</div></div>
+     <div class="d-op">×</div>
+     <div class="d-item"><div class="d-val" style="color:var(--accent)">${(at*100).toFixed(3)}%</div><div class="d-lbl">總資產週轉率</div></div>
+     <div class="d-op">×</div>
+     <div class="d-item"><div class="d-val" style="color:var(--orange)">${lev.toFixed(2)}×</div><div class="d-lbl">權益乘數</div></div>
+     <div class="d-op">=</div>
+     <div class="d-item" style="border:1px solid rgba(79,142,247,.4)"><div class="d-val">${pc(roe)}</div><div class="d-lbl">ROE</div></div>`;
+  document.getElementById('dupont-eq').textContent =
+    `${pc(nm)} × ${(at*100).toFixed(3)}% × ${lev.toFixed(2)} = ${pc(roe)}`;
+
+  const iRisk = intr>0&&ni>0 ? (intr/ni*100).toFixed(1)+'%' : '—';
+  document.getElementById('dupont-ratios').innerHTML =
+    rr('ROE', pc(roe), roe>.2?'g':roe>.1?'o':'r')
+   +rr('稅後淨利率', pc(nm))
+   +rr('總資產週轉率', (at*100).toFixed(3)+'%')
+   +rr('權益乘數（財務槓桿）', lev.toFixed(2)+'×')
+   +rr('負債比率', pc(dr), dr>.7?'r':dr>.5?'o':'g')
+   +(intr>0?rr('利息 / 稅後淨利', iRisk, +iRisk>100?'r':+iRisk>50?'o':'g'):'');
+}
+
+// ══════════════════════════════════════════════
+//  PER / PBR
+// ══════════════════════════════════════════════
+function cp(){
+  const price=+v('p-price')||0, ttm=+v('p-ttm')||1, fwd=+v('p-fwd')||1, bps=+v('p-bps')||1;
+  const perTTM=price/ttm, perFwd=price/fwd, pbr=price/bps;
+  const pc_=p=>p<15?'g':p<30?'':p<50?'o':'r';
+  const lb=p=>p<10?'超低估':p<15?'便宜':p<25?'合理':p<40?'偏貴':p<60?'貴':'瘋狂';
+  document.getElementById('per-res').innerHTML =
+    rr('PER（TTM）', perTTM.toFixed(2)+'× '+lb(perTTM), pc_(perTTM))
+   +rr('PER（預估）', perFwd.toFixed(2)+'× '+lb(perFwd), pc_(perFwd))
+   +rr('PBR',        pbr.toFixed(2)+'×', pbr>5?'o':pbr>2?'':'g')
+   +rr('盈餘殖利率（1/PER）', (100/perTTM).toFixed(2)+'%');
+  document.getElementById('g-ptr').style.left = Math.min(perTTM/50,1)*100+'%';
+}
+
+// ══════════════════════════════════════════════
+//  股本稀釋
+// ══════════════════════════════════════════════
+function cs(){
+  const usd=+v('ecb-usd')*1e6||0, rate=+v('ecb-rate')||30;
+  const cp_=+v('ecb-cp')||1, shNow=+v('sh-now')||0;
+  const shBeg=+v('sh-begin')||0, mo=+v('sh-month')||7;
+  const ni=+v('net-for-eps')||0;
+
+  const newZ = Math.round(usd*rate/cp_/1000);      // 新增張數
+  const finZ = shNow + newZ;
+  const dilPct = newZ/shNow*100;
+  const wt = (12-mo+1)/12;
+  const wAvgZ = Math.round(shBeg + newZ*wt);       // 加權平均張數
+
+  document.getElementById('shares-res').innerHTML =
+    rr('ECB 面額', v('ecb-usd')+' 百萬美金')
+   +rr('台幣換算（固定匯率）', fm(usd*rate/1e8)+' 億元')
+   +rr('轉換後新增張數', newZ.toLocaleString()+' 張','o')
+   +rr('轉換後總張數', finZ.toLocaleString()+' 張')
+   +rr('股本膨脹率', '+'+dilPct.toFixed(2)+'%','r')
+   +rr('加權平均張數（'+mo+'月轉換）', wAvgZ.toLocaleString()+' 張','b');
+
+  if(ni>0){
+    const epsOld = ni*1e8 / (shBeg*1000);
+    const epsNew = ni*1e8 / (wAvgZ*1000);
+    const diff = epsNew - epsOld;
+    document.getElementById('dil-eps').innerHTML =
+      rr('用舊張數計算 EPS', epsOld.toFixed(2)+' 元')
+     +rr('用正確加權張數 EPS', epsNew.toFixed(2)+' 元','b')
+     +rr('被高估（舊−新）', Math.abs(diff).toFixed(2)+' 元（'+Math.abs(diff/epsOld*100).toFixed(1)+'%）','r')
+     +`<div class="note" style="margin-top:12px">⚠️ TT：很多法人 EPS 高估，就是因為沒正確反映 ECB 轉換後的加權平均張數！</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  FinMind API 串接
+// ══════════════════════════════════════════════
+function setStatus(cls, msg){
+  const el=document.getElementById('api-status');
+  el.className=cls; el.textContent=msg;
+}
+
+async function fetchData(){
+  const stock = document.getElementById('api-stock').value.trim();
+  const token = document.getElementById('api-token').value.trim();
+  if(!stock){alert('請輸入股票代碼（例：2330）');return;}
+  if(!token){alert('請輸入 FinMind API Token\n免費申請：finmindtrade.com → 帳戶設定');return;}
+
+  // 記住 token 和 stock
+  try{localStorage.setItem('fm_token',token);localStorage.setItem('fm_stock',stock);}catch(e){}
+
+  const btn=document.getElementById('btn-fetch');
+  btn.disabled=true; btn.textContent='⏳ 載入中...';
+  setStatus('loading','正在連接 FinMind API...');
+  document.getElementById('api-period').textContent='';
+
+  try{
+    const BASE='https://api.finmindtrade.com/api/v4/data';
+    const d3y = dateStr(-1100);   // 3年前，確保拿到足夠季度
+    const d1m = dateStr(-30);     // 30天前股價
+
+    const [fsR, bsR, prR] = await Promise.all([
+      fm_get(BASE,'TaiwanStockFinancialStatements', stock, d3y, token),
+      fm_get(BASE,'TaiwanStockBalanceSheet',         stock, d3y, token),
+      fm_get(BASE,'TaiwanStockPrice',                stock, d1m, token)
+    ]);
+
+    const info = populate(fsR, bsR, prR, stock);
+    setStatus('success', `✅ ${stock} 資料載入成功`);
+    document.getElementById('api-period').textContent = info;
+    // 顯示診斷面板
+    const diagEl = document.getElementById('api-diag');
+    if(diagEl) diagEl.style.display = 'block';
+  }catch(e){
+    setStatus('error','❌ 失敗：'+e.message+' — 請確認 Token 和股票代碼是否正確');
+    console.error(e);
+  }finally{
+    btn.disabled=false; btn.textContent='🔄 自動抓取財報';
+  }
+}
+
+async function fm_get(base, dataset, stockId, start, token){
+  const url=`${base}?dataset=${dataset}&data_id=${stockId}&start_date=${start}&token=${token}`;
+  const r=await fetch(url);
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j=await r.json();
+  if(j.status!=200) throw new Error(j.msg||'API 錯誤');  // 用 != 避免型別不符
+  return j.data||[];
+}
+
+function populate(fsData, bsData, prData, stockId){
+  let periodInfo='';
+  const dbg=[];  // 診斷訊息
+
+  // ── 股價 ──
+  if(prData && prData.length>0){
+    const latest = prData[prData.length-1];
+    const p = latest.close || latest.Close || latest.price || 0;
+    if(p){
+      setVal('cur_price', p);
+      setVal('p-price', p);
+      periodInfo += `股價 ${p} (${latest.date})`;
+    }
+    dbg.push(`✅ 股價：${prData.length} 筆，最新 ${p} 元 (${latest.date})`);
+  } else {
+    dbg.push('⚠️ 股價：無資料');
+  }
+
+  // ── 損益表 ──
+  if(fsData && fsData.length>0){
+    // 建立 {日期+type: {科目:值}} 結構；優先取最新季度（非累計）
+    const byPeriod={};
+    fsData.forEach(r=>{
+      const key = r.date;
+      if(!byPeriod[key]) byPeriod[key]={};
+      byPeriod[key][r.origin_name]=r.value;
+    });
+
+    const dates=Object.keys(byPeriod).sort().reverse();
+    const latest=byPeriod[dates[0]];
+    periodInfo += `　財報期間 ${dates[0]}`;
+
+    // 診斷：顯示最新期間有哪些欄位
+    const fsKeys=Object.keys(latest);
+    dbg.push(`✅ 損益表：${fsData.length} 筆，最新期 ${dates[0]}，共 ${fsKeys.length} 欄位`);
+
+    // ── 各科目（盡量多 fallback）──
+    const rev = pick(latest,[
+      '營業收入合計','營業收入','收入合計','營業淨收入','總收益',
+      '利息淨收益','淨收益','淨利息收入'   // 銀行/壽險
+    ]) / 1e5;
+
+    const gp = pick(latest,[
+      '營業毛利（毛損）淨額','營業毛利（毛損）','營業毛利','毛利','毛損',
+      '毛利（毛損）淨額'
+    ]) / 1e5;
+
+    const op = pick(latest,[
+      '營業利益（損失）','營業利益','本期營業利益',
+      '營業損益','稅前營業利益'
+    ]) / 1e5;
+
+    const pt = pick(latest,[
+      '繼續營業單位稅前淨利（淨損）','稅前淨利（淨損）','稅前淨利',
+      '稅前損益','稅前損益（含非常損益）','繼續營業前稅前淨利（損）'
+    ]) / 1e5;
+
+    const tn = pick(latest,[
+      '本期淨利（淨損）','稅後淨利','本期淨損益',
+      '本期損益','合併稅後損益'
+    ]) / 1e5;
+
+    const pn = pick(latest,[
+      '歸屬於母公司業主之本期淨利（淨損）',
+      '母公司業主之淨利（淨損）',
+      '歸屬母公司淨利','母公司業主淨利',
+      '歸屬於母公司業主之損益'
+    ]) / 1e5;
+
+    const eps = pick(latest,[
+      '基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'
+    ]);  // 元/股，不換算單位
+
+    dbg.push(`　　營收=${rev>0?rev.toFixed(1)+'億':'❌未找到'} | 毛利=${gp>0?gp.toFixed(1)+'億':'❌'} | 營益=${op>0?op.toFixed(1)+'億':'❌'} | EPS=${eps||'❌'}`);
+
+    if(rev>0){
+      const usePn  = pn>0 ? pn : tn;
+      const gmPct  = gp>0 ? gp/rev*100 : 0;
+      const omPct  = op>0 ? op/rev*100 : 0;
+      const norPct = (pt>0&&op>0) ? (pt-op)/rev*100 : 0;
+      const taxPct = (pt>0&&tn>=0) ? (pt-tn)/pt*100 : 20;
+      const minPct = (tn>0&&pn>0&&pn<tn) ? (tn-pn)/tn*100 : 0;
+
+      setVal('revenue',      rev.toFixed(0));
+      if(gmPct>0) setVal('gross_margin', gmPct.toFixed(2));
+      if(omPct>0) setVal('op_margin',    omPct.toFixed(2));
+      setVal('non_op_rate',  norPct.toFixed(3));
+      setVal('tax_rate',     taxPct.toFixed(2));
+      setVal('minority',     minPct.toFixed(2));
+      if(eps)     setVal('p-ttm', (+eps).toFixed(2));
+      setVal('d-ni',  usePn.toFixed(2));
+      setVal('d-rev', rev.toFixed(0));
+    } else {
+      // rev=0：列出所有回傳欄位幫助診斷
+      dbg.push('　　⚠️ 找不到營收欄位，回傳欄位：'+fsKeys.slice(0,12).join('、')+(fsKeys.length>12?'…':''));
+    }
+  } else {
+    dbg.push('⚠️ 損益表：回傳 0 筆（可能 Token 不足或代碼錯誤）');
+  }
+
+  // ── 資產負債表 ──
+  if(bsData && bsData.length>0){
+    const byPeriod={};
+    bsData.forEach(r=>{
+      if(!byPeriod[r.date]) byPeriod[r.date]={};
+      byPeriod[r.date][r.origin_name]=r.value;
+    });
+    const dates=Object.keys(byPeriod).sort().reverse();
+    const latest=byPeriod[dates[0]];
+    const bsKeys=Object.keys(latest);
+    dbg.push(`✅ 資產負債表：${bsData.length} 筆，最新期 ${dates[0]}，共 ${bsKeys.length} 欄位`);
+
+    const ta  = pick(latest,['資產總計','資產總額','資產合計','合計']) / 1e5;
+    const teq = pick(latest,[
+      '權益總計','股東權益合計','權益合計','股東權益總額',
+      '本期權益合計'
+    ]) / 1e5;
+    const peq = pick(latest,[
+      '歸屬於母公司業主之權益合計',
+      '母公司業主之權益合計',
+      '歸屬母公司業主之權益合計',
+      '歸屬母公司業主之權益','母公司業主權益'
+    ]) / 1e5;
+    const cs  = pick(latest,[
+      '普通股股本','股本','股本合計'
+    ]);  // 仟元原始值
+
+    const sharesZ = cs>0 ? Math.round(cs/10) : 0;
+    const useEq   = peq>0 ? peq : teq;
+    // BPS(元/張) = 歸母權益(億) × 1e8 ÷ (張 × 1000)
+    const bpsCalc = sharesZ>0 ? (useEq*1e8/(sharesZ*1000)).toFixed(2) : 0;
+
+    dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本(仟元)=${cs||'❌'} → ${sharesZ.toLocaleString()}張 | BPS=${bpsCalc||'❌'}`);
+
+    if(ta>0)       setVal('d-assets', ta.toFixed(0));
+    if(teq>0)      setVal('d-eq',     teq.toFixed(0));
+    if(+bpsCalc>0){ setVal('bps', bpsCalc); setVal('p-bps', bpsCalc); }
+    if(sharesZ>0){ setVal('shares_z', sharesZ); setVal('sh-now', sharesZ); }
+
+    if(cs===0){
+      dbg.push('　　⚠️ 找不到股本欄位，回傳欄位：'+bsKeys.slice(0,12).join('、')+(bsKeys.length>12?'…':''));
+    }
+  } else {
+    dbg.push('⚠️ 資產負債表：回傳 0 筆');
+  }
+
+  // 顯示診斷訊息
+  const diagEl = document.getElementById('api-diag');
+  if(diagEl) diagEl.innerHTML = dbg.map(d=>`<div>${d}</div>`).join('');
+
+  // 觸發所有計算
+  ce(); cf(); cd(); cp(); cs();
+  return periodInfo;
+}
+
+// ── 工具函式 ──
+function pick(obj, keys){
+  for(const k of keys){ if(obj&&obj[k]!=null&&!isNaN(obj[k])) return +obj[k]; }
+  return 0;
+}
+function setVal(id, val){ const el=document.getElementById(id); if(el) el.value=val; }
+function dateStr(daysOffset){
+  const d=new Date(); d.setDate(d.getDate()+daysOffset);
+  return d.toISOString().split('T')[0];
+}
+function v(id){ return document.getElementById(id)?.value||0; }
+function fm(n){ return (+n).toLocaleString('zh-TW',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function pc(n){ return (n*100).toFixed(2)+'%'; }
+function step(lbl,val,hint){
+  return `<div class="eps-step"><span class="sl">${lbl}${hint?'<br><span style="font-size:10px;opacity:.7">'+hint+'</span>':''}</span><span class="sv">${val}</span></div>`;
+}
+function rr(lbl,val,cls=''){
+  return `<div class="rrow"><span class="lbl">${lbl}</span><span class="val ${cls}">${val}</span></div>`;
+}
+function fz(cls,name,color,range,tag){
+  return `<div class="fish-zone ${cls}"><div><div class="zname" style="color:${color}">${name}</div><div class="zrange" style="color:${color}">${range}</div></div><div class="ztag">${tag}</div></div>`;
+}
+function sw(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+  const idx=['eps','fish','dupont','per','shares'].indexOf(name);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+  document.getElementById('pane-'+name).classList.add('active');
+}
+
+// ── 啟動：從 localStorage 還原 token/stock ──
+try{
+  const t=localStorage.getItem('fm_token'); if(t) document.getElementById('api-token').value=t;
+  const s=localStorage.getItem('fm_stock'); if(s) document.getElementById('api-stock').value=s;
+}catch(e){}
+
+// 初始計算
+ce(); cf(); cd(); cp(); cs();
+</script>
+</body>
+</html>
