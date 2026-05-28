@@ -671,7 +671,7 @@ async function fetchData(){
   const stock = document.getElementById('api-stock').value.trim();
   const token = document.getElementById('api-token').value.trim();
   if(!stock){alert('請輸入股票代碼（例：2330）');return;}
-  if(!token){alert('請輸入 FinMind API Token\n免費申請：finmindtrade.com → 帳戶設定');return;}
+  // token 可為空（免費額度每小時 600 次，無需登入）
 
   // 記住 token 和 stock
   try{localStorage.setItem('fm_token',token);localStorage.setItem('fm_stock',stock);}catch(e){}
