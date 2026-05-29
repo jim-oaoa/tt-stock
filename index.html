@@ -755,34 +755,34 @@ function populate(fsData, bsData, prData, stockId){
     const rev = pick(latest,[
       '營業收入合計','營業收入','收入合計','營業淨收入','總收益',
       '利息淨收益','淨收益','淨利息收入'   // 銀行/壽險
-    ]) / 1e5;
+    ]) / 1e8;
 
     const gp = pick(latest,[
       '營業毛利（毛損）淨額','營業毛利（毛損）','營業毛利','毛利','毛損',
       '毛利（毛損）淨額'
-    ]) / 1e5;
+    ]) / 1e8;
 
     const op = pick(latest,[
       '營業利益（損失）','營業利益','本期營業利益',
       '營業損益','稅前營業利益'
-    ]) / 1e5;
+    ]) / 1e8;
 
     const pt = pick(latest,[
       '繼續營業單位稅前淨利（淨損）','稅前淨利（淨損）','稅前淨利',
       '稅前損益','稅前損益（含非常損益）','繼續營業前稅前淨利（損）'
-    ]) / 1e5;
+    ]) / 1e8;
 
     const tn = pick(latest,[
       '本期淨利（淨損）','稅後淨利','本期淨損益',
       '本期損益','合併稅後損益'
-    ]) / 1e5;
+    ]) / 1e8;
 
     const pn = pick(latest,[
       '歸屬於母公司業主之本期淨利（淨損）',
       '母公司業主之淨利（淨損）',
       '歸屬母公司淨利','母公司業主淨利',
       '歸屬於母公司業主之損益'
-    ]) / 1e5;
+    ]) / 1e8;
 
     const eps = pick(latest,[
       '基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'
@@ -827,27 +827,27 @@ function populate(fsData, bsData, prData, stockId){
     const bsKeys=Object.keys(latest);
     dbg.push(`✅ 資產負債表：${bsData.length} 筆，最新期 ${dates[0]}，共 ${bsKeys.length} 欄位`);
 
-    const ta  = pick(latest,['資產總計','資產總額','資產合計','合計']) / 1e5;
+    const ta  = pick(latest,['資產總計','資產總額','資產合計','合計']) / 1e8;
     const teq = pick(latest,[
-      '權益總計','股東權益合計','權益合計','股東權益總額',
+      '權益總額','權益總計','股東權益合計','權益合計','股東權益總額',
       '本期權益合計'
-    ]) / 1e5;
+    ]) / 1e8;
     const peq = pick(latest,[
       '歸屬於母公司業主之權益合計',
       '母公司業主之權益合計',
       '歸屬母公司業主之權益合計',
       '歸屬母公司業主之權益','母公司業主權益'
-    ]) / 1e5;
+    ]) / 1e8;
     const cs  = pick(latest,[
       '普通股股本','股本','股本合計'
-    ]);  // 仟元原始值
+    ]);  // 元原始值（面額10元/股）
 
-    const sharesZ = cs>0 ? Math.round(cs/10) : 0;
+    const sharesZ = cs>0 ? Math.round(cs/10000) : 0;  // 元÷10(面額)÷1000(股/張)=張
     const useEq   = peq>0 ? peq : teq;
     // BPS(元/張) = 歸母權益(億) × 1e8 ÷ (張 × 1000)
     const bpsCalc = sharesZ>0 ? (useEq*1e8/(sharesZ*1000)).toFixed(2) : 0;
 
-    dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本(仟元)=${cs||'❌'} → ${sharesZ.toLocaleString()}張 | BPS=${bpsCalc||'❌'}`);
+    dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本(元)=${cs||'❌'} → ${sharesZ.toLocaleString()}張 | BPS=${bpsCalc||'❌'}`);
 
     if(ta>0)       setVal('d-assets', ta.toFixed(0));
     if(teq>0)      setVal('d-eq',     teq.toFixed(0));
