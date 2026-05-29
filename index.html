@@ -819,6 +819,7 @@ function populate(fsData, bsData, prData, stockId){
   if(bsData && bsData.length>0){
     const byPeriod={};
     bsData.forEach(r=>{
+      if(r.type && r.type.endsWith('_per')) return;  // 跳過百分比列，只保留元值
       if(!byPeriod[r.date]) byPeriod[r.date]={};
       byPeriod[r.date][r.origin_name]=r.value;
     });
