@@ -862,6 +862,16 @@ function populate(fsData, bsData, prData, stockId){
     dbg.push('⚠️ 資產負債表：回傳 0 筆');
   }
 
+  // ── 魚模型：自動推算 adj_roe，避免殘留上支股票的數值 ──
+  setVal('other_eq', '0');  // 其他權益項目各股不同，API無法取得，重置為0
+  if(eps && +bpsCalc > 0){
+    const roAuto = (+eps * 4 / +bpsCalc * 100).toFixed(2);
+    setVal('adj_roe', roAuto);
+    dbg.push(`　魚模型 adj_ROE 自動推算：EPS ${eps}×4 ÷ BPS ${bpsCalc} = ${roAuto}%`);
+  } else {
+    setVal('adj_roe', '0');  // 無法計算時重置，避免顯示舊股票數值
+  }
+
   // 顯示診斷訊息
   const diagEl = document.getElementById('api-diag');
   if(diagEl) diagEl.innerHTML = dbg.map(d=>`<div>${d}</div>`).join('');
