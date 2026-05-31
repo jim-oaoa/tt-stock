@@ -718,7 +718,8 @@ async function fm_get(base, dataset, stockId, start, token){
 function populate(fsData, bsData, prData, stockId){
   let periodInfo='';
   const dbg=[];  // 診斷訊息
-  let eps = 0, bpsCalc = 0;  // 提升到外層，供 adj_roe 跨 block 使用
+  let eps = 0, bpsCalc = 0;          // 提升到外層，供 adj_roe 跨 block 使用
+  let annualEps = 0, annualPeriod = ''; // 最近年報 EPS（優先用於 adj_roe）
 
   // ── 股價 ──
   if(prData && prData.length>0){
@@ -747,6 +748,15 @@ function populate(fsData, bsData, prData, stockId){
     const dates=Object.keys(byPeriod).sort().reverse();
     const latest=byPeriod[dates[0]];
     periodInfo += `　財報期間 ${dates[0]}`;
+
+    // 找最近年報（YYYY-12-31），優先用年度 EPS 計算 adj_roe
+    const annualDates = dates.filter(d => d.endsWith('-12-31'));
+    if(annualDates.length > 0){
+      annualPeriod = annualDates[0];
+      annualEps = pick(byPeriod[annualPeriod],[
+        '基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'
+      ]);
+    }
 
     // 診斷：顯示最新期間有哪些欄位
     const fsKeys=Object.keys(latest);
@@ -864,11 +874,22 @@ function populate(fsData, bsData, prData, stockId){
   }
 
   // ── 魚模型：自動推算 adj_roe，避免殘留上支股票的數值 ──
+  // 優先用最近年報 EPS（避免單季偏差）；找不到才退回「季 EPS × 4」
   setVal('other_eq', '0');  // 其他權益項目各股不同，API無法取得，重置為0
-  if(eps && +bpsCalc > 0){
-    const roAuto = (+eps * 4 / +bpsCalc * 100).toFixed(2);
-    setVal('adj_roe', roAuto);
-    dbg.push(`　魚模型 adj_ROE 自動推算：EPS ${eps}×4 ÷ BPS ${bpsCalc} = ${roAuto}%`);
+  if(+bpsCalc > 0){
+    if(annualEps > 0){
+      // 年報 EPS ÷ BPS（不需 ×4，已是全年）
+      const roAuto = (annualEps / +bpsCalc * 100).toFixed(2);
+      setVal('adj_roe', roAuto);
+      dbg.push(`　魚模型 adj_ROE：年報EPS ${annualEps}(${annualPeriod}) ÷ BPS ${bpsCalc} = ${roAuto}%`);
+    } else if(eps > 0){
+      // 退回：最新季 EPS × 4 年化
+      const roAuto = (+eps * 4 / +bpsCalc * 100).toFixed(2);
+      setVal('adj_roe', roAuto);
+      dbg.push(`　魚模型 adj_ROE（季×4）：EPS ${eps}×4 ÷ BPS ${bpsCalc} = ${roAuto}%`);
+    } else {
+      setVal('adj_roe', '0');
+    }
   } else {
     setVal('adj_roe', '0');  // 無法計算時重置，避免顯示舊股票數值
   }
