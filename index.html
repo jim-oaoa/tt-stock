@@ -718,6 +718,7 @@ async function fm_get(base, dataset, stockId, start, token){
 function populate(fsData, bsData, prData, stockId){
   let periodInfo='';
   const dbg=[];  // 診斷訊息
+  let eps = 0, bpsCalc = 0;  // 提升到外層，供 adj_roe 跨 block 使用
 
   // ── 股價 ──
   if(prData && prData.length>0){
@@ -784,7 +785,7 @@ function populate(fsData, bsData, prData, stockId){
       '歸屬於母公司業主之損益'
     ]) / 1e8;
 
-    const eps = pick(latest,[
+    eps = pick(latest,[
       '基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'
     ]);  // 元/股，不換算單位
 
@@ -846,7 +847,7 @@ function populate(fsData, bsData, prData, stockId){
     const sharesZ = cs>0 ? Math.round(cs/10000) : 0;  // 元÷10(面額)÷1000(股/張)=張
     const useEq   = peq>0 ? peq : teq;
     // BPS(元/張) = 歸母權益(億) × 1e8 ÷ (張 × 1000)
-    const bpsCalc = sharesZ>0 ? (useEq*1e8/(sharesZ*1000)).toFixed(2) : 0;
+    bpsCalc = sharesZ>0 ? (useEq*1e8/(sharesZ*1000)).toFixed(2) : 0;
 
     dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本(元)=${cs||'❌'} → ${sharesZ.toLocaleString()}張 | BPS=${bpsCalc||'❌'}`);
 
