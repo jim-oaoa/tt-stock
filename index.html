@@ -773,13 +773,13 @@ async function fetchData(){
 
   try{
     const BASE='https://api.finmindtrade.com/api/v4/data';
-    const d3y = dateStr(-1100);   // 3年前，確保拿到足夠季度
-    const d1m = dateStr(-30);     // 30天前股價
+    const d3y = dateStr(-1100);   // 3年前，確保拿到足夠季度（財報 + 股價歷史圖）
+    const d1m = dateStr(-30);     // 30天前（僅供顯示最新股價用）
 
     const [fsR, bsR, prR] = await Promise.all([
       fm_get(BASE,'TaiwanStockFinancialStatements', stock, d3y, token),
       fm_get(BASE,'TaiwanStockBalanceSheet',         stock, d3y, token),
-      fm_get(BASE,'TaiwanStockPrice',                stock, d1m, token)
+      fm_get(BASE,'TaiwanStockPrice',                stock, d3y, token)  // 改拉3年，配合歷史走勢圖
     ]);
 
     const info = populate(fsR, bsR, prR, stock);
