@@ -22,6 +22,20 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 /* ── API Bar ── */
 .api-bar{background:#12162a;border-bottom:2px solid var(--accent);padding:14px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+/* ── 最近搜尋 ── */
+#recent-bar{background:#0d1020;border-bottom:1px solid var(--border);padding:5px 28px;display:none;align-items:center;gap:8px;flex-wrap:wrap}
+.rlbl{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.hist-btn{background:var(--card2);border:1px solid var(--border);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:12px;color:var(--text);white-space:nowrap;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.hist-btn:hover{border-color:var(--accent);color:var(--accent)}
+.hist-btn .hcode{font-size:10px;color:var(--muted);background:rgba(255,255,255,.06);border-radius:3px;padding:1px 4px}
+.hist-btn:hover .hcode{color:var(--accent)}
+
+/* ── 魚模型股票標頭 ── */
+#fish-stock-header{display:none;background:rgba(79,142,247,.07);border:1px solid rgba(79,142,247,.25);border-radius:8px;padding:9px 16px;margin-bottom:12px;font-size:13px;color:var(--accent);font-weight:600;gap:12px;align-items:center;flex-wrap:wrap}
+.fsh-name{font-size:15px;font-weight:700}
+.fsh-sep{color:var(--border);font-size:16px}
+.fsh-meta{font-size:11px;color:var(--muted);font-weight:400}
 .api-bar .title{font-weight:700;color:var(--head);font-size:15px;white-space:nowrap;margin-right:4px}
 .api-bar input{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;min-width:110px}
 .api-bar input:focus{outline:none;border-color:var(--accent)}
@@ -212,6 +226,12 @@ table.cmp tr:hover td{background:var(--card2)}
 </div>
 <div id="api-diag" style="display:none;background:#0d1020;border-bottom:1px solid #2e3352;padding:8px 28px;font-size:11px;color:#8892b0;line-height:1.8;font-family:monospace"></div>
 
+<!-- ── 最近搜尋 ── -->
+<div id="recent-bar">
+  <span class="rlbl">最近：</span>
+  <div id="recent-stocks" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+</div>
+
 <!-- ══ Header ══ -->
 <div class="header">
   <h1>📊 TT 股票分析工具 v2</h1>
@@ -296,6 +316,8 @@ table.cmp tr:hover td{background:var(--card2)}
 
 <!-- ── Tab 2: Fish ── -->
 <div class="pane" id="pane-fish">
+  <!-- 當前分析股票標頭 -->
+  <div id="fish-stock-header"></div>
   <div class="note">
     <strong>TT 魚模型公式：</strong>
     調整淨值 = (歸母股東權益 − 其他權益OCI) ÷ 流通在外股數。
@@ -740,6 +762,33 @@ async function fetchData(){
     ]);
 
     const info = populate(fsR, bsR, prR, stock);
+
+    // ── 取得股票名稱（TaiwanStockInfo）──
+    let stockName = stock;
+    try{
+      const infoR = await fm_get(BASE,'TaiwanStockInfo',stock,'1900-01-01',token);
+      if(infoR&&infoR.length>0){
+        stockName = infoR[0].stock_name || infoR[0].company_name || stock;
+      }
+    }catch(e){ /* 取名失敗不影響主功能 */ }
+
+    // ── 儲存最近搜尋 ──
+    saveRecentStock(stock, stockName);
+
+    // ── 更新魚模型股票標頭 ──
+    const fishHdr = document.getElementById('fish-stock-header');
+    if(fishHdr){
+      const price  = document.getElementById('cur_price')?.value || '';
+      const period = info.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      fishHdr.style.display = 'flex';
+      fishHdr.innerHTML =
+        `<span class="fsh-name">📊 ${stockName}</span>`+
+        `<span class="fsh-sep">|</span>`+
+        `<span class="fsh-meta">代碼 ${stock}</span>`+
+        (period?`<span class="fsh-sep">|</span><span class="fsh-meta">財報 ${period}</span>`:'')+
+        (price ?`<span class="fsh-sep">|</span><span class="fsh-meta">股價 ${price} 元</span>`:'');
+    }
+
     setStatus('success', `✅ ${stock} 資料載入成功`);
     document.getElementById('api-period').textContent = info;
     // 顯示診斷面板
@@ -1002,6 +1051,33 @@ function rr(lbl,val,cls=''){
 function fz(cls,name,color,range,tag){
   return `<div class="fish-zone ${cls}"><div><div class="zname" style="color:${color}">${name}</div><div class="zrange" style="color:${color}">${range}</div></div><div class="ztag">${tag}</div></div>`;
 }
+// ══ 最近搜尋 ══
+function saveRecentStock(code, name){
+  let arr=[];
+  try{arr=JSON.parse(localStorage.getItem('tt_recent')||'[]');}catch(e){}
+  arr=arr.filter(s=>s.c!==code);          // 去除重複
+  arr.unshift({c:code,n:name});           // 加到最前面
+  arr=arr.slice(0,5);                     // 只保留 5 筆
+  try{localStorage.setItem('tt_recent',JSON.stringify(arr));}catch(e){}
+  renderRecentStocks();
+}
+function renderRecentStocks(){
+  const wrap=document.getElementById('recent-stocks');
+  const bar=document.getElementById('recent-bar');
+  if(!wrap)return;
+  let arr=[];
+  try{arr=JSON.parse(localStorage.getItem('tt_recent')||'[]');}catch(e){}
+  if(!arr.length){if(bar)bar.style.display='none';return;}
+  if(bar)bar.style.display='flex';
+  wrap.innerHTML=arr.map(s=>
+    `<button class="hist-btn" onclick="fetchByCode('${s.c}')"><span>${s.n}</span><span class="hcode">${s.c}</span></button>`
+  ).join('');
+}
+function fetchByCode(code){
+  document.getElementById('api-stock').value=code;
+  fetchData();
+}
+
 function sw(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
@@ -1018,6 +1094,8 @@ try{
 
 // 初始計算
 ce(); cf(); cd(); cp(); cs();
+// 顯示儲存的最近搜尋
+renderRecentStocks();
 </script>
 </body>
 </html>
