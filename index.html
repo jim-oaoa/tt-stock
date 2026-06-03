@@ -777,8 +777,10 @@ function populate(fsData, bsData, prData, stockId){
     // TTM EPS & TTM 歸母淨利（最近 4 季累加）
     const epsPickKeys = ['基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'];
     const pnPickKeys  = [
+      '淨利（淨損）歸屬於母公司業主',            // FinMind 實際欄位名
       '歸屬於母公司業主之本期淨利（淨損）','母公司業主之淨利（淨損）',
-      '歸屬母公司淨利','母公司業主淨利','歸屬於母公司業主之損益'
+      '歸屬母公司淨利','母公司業主淨利','歸屬於母公司業主之損益',
+      '本期淨利（淨損）'                         // 最終退回：合計淨利
     ];
     const last4Dates = dates.slice(0, 4);
     ttmEps = last4Dates.reduce((sum, d) => sum + pick(byPeriod[d], epsPickKeys), 0);
@@ -815,10 +817,12 @@ function populate(fsData, bsData, prData, stockId){
     ]) / 1e8;
 
     const pn = pick(latest,[
+      '淨利（淨損）歸屬於母公司業主',
       '歸屬於母公司業主之本期淨利（淨損）',
       '母公司業主之淨利（淨損）',
       '歸屬母公司淨利','母公司業主淨利',
-      '歸屬於母公司業主之損益'
+      '歸屬於母公司業主之損益',
+      '本期淨利（淨損）'
     ]) / 1e8;
 
     eps = pick(latest,[
