@@ -799,6 +799,9 @@ async function fetchData(){
     // ── 歷史走勢圖 ──
     renderHistoryChart(prR, bsR, fsR, stock, stockName);
 
+    // ── 本益比 tab：公司名稱 ──
+    setVal('p-name', stockName);
+
     // ── 更新目前股價區的股票名稱 ──
     const stockNameEl = document.getElementById('f-stock-name');
     if(stockNameEl){
@@ -946,7 +949,9 @@ function populate(fsData, bsData, prData, stockId){
       setVal('non_op_rate',  norPct.toFixed(3));
       setVal('tax_rate',     taxPct.toFixed(2));
       setVal('minority',     minPct.toFixed(2));
-      if(eps)     setVal('p-ttm', (+eps).toFixed(2));
+      // 本益比 tab：p-ttm 用 TTM 四季累加（非單季）
+      if(ttmEps>0) setVal('p-ttm', ttmEps.toFixed(2));
+      else if(eps>0) setVal('p-ttm', (+eps*4).toFixed(2));
       setVal('d-ni',  usePn.toFixed(2));
       setVal('d-rev', rev.toFixed(0));
     } else {
@@ -1044,6 +1049,9 @@ function populate(fsData, bsData, prData, stockId){
     if(+roAuto > 0){
       setVal('adj_roe', roAuto);
       dbg.push(`　魚模型 adj_ROE：${roLabel} = ${roAuto}%`);
+      // 本益比 tab：p-fwd 自動填魚模型預估 EPS（調整BPS × 調整ROE）
+      const predFwd = (+bpsCalc * +roAuto / 100).toFixed(2);
+      setVal('p-fwd', predFwd);
     } else {
       setVal('adj_roe', '0');
     }
