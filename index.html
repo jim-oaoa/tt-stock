@@ -26,6 +26,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 /* ── API Bar ── */
 .api-bar{background:#12162a;border-bottom:2px solid var(--accent);padding:14px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 
+/* ── 股票搜尋下拉 ── */
+.stock-search-wrap{position:relative;display:inline-block}
+#stock-dropdown{position:absolute;top:calc(100%+4px);left:0;min-width:220px;background:var(--card);border:1px solid var(--accent);border-radius:8px;max-height:288px;overflow-y:auto;z-index:1000;box-shadow:0 8px 28px rgba(0,0,0,.55);display:none}
+.si{padding:8px 13px;cursor:pointer;display:flex;gap:10px;align-items:center;border-bottom:1px solid rgba(46,51,82,.3)}
+.si:last-child{border-bottom:none}
+.si:hover,.si.sel{background:rgba(79,142,247,.15)}
+.si-code{color:var(--accent);font-weight:700;font-size:12px;min-width:44px;flex-shrink:0}
+.si-name{color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.si-loading{padding:10px 14px;color:var(--muted);font-size:12px;text-align:center}
+
 /* ── 最近搜尋 ── */
 #recent-bar{background:#0d1020;border-bottom:1px solid var(--border);padding:5px 28px;display:none;align-items:center;gap:8px;flex-wrap:wrap}
 .rlbl{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
@@ -42,7 +52,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .api-bar .title{font-weight:700;color:var(--head);font-size:15px;white-space:nowrap;margin-right:4px}
 .api-bar input{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:7px 12px;color:var(--text);font-size:13px;min-width:110px}
 .api-bar input:focus{outline:none;border-color:var(--accent)}
-#api-stock{width:100px}
+#api-stock{width:180px}
 #api-token{width:260px}
 .btn-fetch{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap;transition:opacity .2s}
 .btn-fetch:hover{opacity:.85}
@@ -147,7 +157,7 @@ table.cmp tr:hover td{background:var(--card2)}
   /* API Bar */
   .api-bar{padding:10px 14px;gap:8px}
   .api-bar .title{font-size:13px;width:100%}
-  #api-stock{width:80px;min-width:80px}
+  #api-stock{width:150px;min-width:120px}
   #api-token{width:100%;flex:1 1 auto;min-width:0}
   .api-help{display:none}          /* 手機隱藏申請說明 */
   #api-status,#api-period{font-size:11px}
@@ -220,7 +230,10 @@ table.cmp tr:hover td{background:var(--card2)}
 <!-- ══ API Bar ══ -->
 <div class="api-bar">
   <span class="title">🔗 串接財報</span>
-  <input id="api-stock" placeholder="股票代碼 2330" maxlength="10">
+  <div class="stock-search-wrap">
+    <input id="api-stock" placeholder="代碼或名稱（如 2330 台積電）" maxlength="20" autocomplete="off">
+    <div id="stock-dropdown"></div>
+  </div>
   <input id="api-token" type="password" placeholder="FinMind API Token（免費）">
   <button class="btn-fetch" id="btn-fetch" onclick="fetchData()">🔄 抓取</button>
   <div class="api-help">尚未申請？<a href="https://finmindtrade.com/" target="_blank">finmindtrade.com 免費註冊 ↗</a> → 帳戶設定 → 取得Token</div>
@@ -1231,11 +1244,111 @@ function sw(name){
   }
 }
 
+// ── 股票關鍵字搜尋下拉 ──
+let _stockList = null;  // [{code, name}] 快取
+let _stockListLoading = false;
+
+async function ensureStockList(){
+  if(_stockList) return _stockList;
+  if(_stockListLoading) return null;
+  const token = document.getElementById('api-token').value.trim();
+  if(!token) return null;
+  _stockListLoading = true;
+  try{
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&token=${encodeURIComponent(token)}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    if(j.status == 200 && j.data){
+      _stockList = j.data.map(d=>({code: d.stock_id||'', name: d.stock_name||''}))
+                         .filter(d=>d.code && /^\d{4,6}/.test(d.code));
+    }
+  }catch(e){}
+  _stockListLoading = false;
+  return _stockList;
+}
+
+function showStockDropdown(items){
+  const dd = document.getElementById('stock-dropdown');
+  if(!items || !items.length){ dd.style.display='none'; return; }
+  dd.innerHTML = items.map(it=>
+    `<div class="si" data-code="${it.code}" data-name="${it.name}">
+       <span class="si-code">${it.code}</span>
+       <span class="si-name">${it.name}</span>
+     </div>`
+  ).join('');
+  dd.style.display = 'block';
+  dd.querySelectorAll('.si').forEach(el=>{
+    el.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      document.getElementById('api-stock').value = el.dataset.code;
+      dd.style.display = 'none';
+    });
+  });
+}
+
+(function setupStockSearch(){
+  const inp = document.getElementById('api-stock');
+  inp.addEventListener('input', async function(){
+    const q = this.value.trim();
+    if(!q){ document.getElementById('stock-dropdown').style.display='none'; return; }
+    const dd = document.getElementById('stock-dropdown');
+    if(!_stockList){
+      const token = document.getElementById('api-token').value.trim();
+      if(!token){
+        dd.innerHTML = '<div class="si-loading">請先填入 FinMind Token 才能搜尋股票名稱</div>';
+        dd.style.display = 'block';
+        return;
+      }
+      if(!_stockListLoading){
+        dd.innerHTML = '<div class="si-loading">載入股票清單中…</div>';
+        dd.style.display = 'block';
+        await ensureStockList();
+      } else {
+        dd.style.display = 'block';
+        return;
+      }
+    }
+    if(!_stockList){ dd.style.display='none'; return; }
+    const ql = q.toLowerCase();
+    const hits = _stockList.filter(s=>
+      s.code.startsWith(q) || s.name.toLowerCase().includes(ql)
+    ).slice(0,10);
+    showStockDropdown(hits);
+  });
+  inp.addEventListener('blur', ()=>{
+    setTimeout(()=>{ document.getElementById('stock-dropdown').style.display='none'; }, 150);
+  });
+  inp.addEventListener('keydown', function(e){
+    const dd = document.getElementById('stock-dropdown');
+    const items = dd.querySelectorAll('.si');
+    let sel = dd.querySelector('.si.sel');
+    if(e.key==='ArrowDown'){
+      e.preventDefault();
+      const next = sel ? (sel.nextElementSibling||items[0]) : items[0];
+      sel && sel.classList.remove('sel');
+      next && next.classList.add('sel');
+    } else if(e.key==='ArrowUp'){
+      e.preventDefault();
+      const prev = sel ? (sel.previousElementSibling||items[items.length-1]) : items[items.length-1];
+      sel && sel.classList.remove('sel');
+      prev && prev.classList.add('sel');
+    } else if(e.key==='Enter'){
+      if(sel){ this.value = sel.dataset.code; dd.style.display='none'; }
+    } else if(e.key==='Escape'){
+      dd.style.display='none';
+    }
+  });
+  // token 填入後預載股票清單
+  document.getElementById('api-token').addEventListener('change', ()=>{ _stockList=null; ensureStockList(); });
+})();
+
 // ── 啟動：從 localStorage 還原 token/stock ──
 try{
   const t=localStorage.getItem('fm_token'); if(t) document.getElementById('api-token').value=t;
   const s=localStorage.getItem('fm_stock'); if(s) document.getElementById('api-stock').value=s;
 }catch(e){}
+// 有 token 時預載股票清單
+if(localStorage.getItem('fm_token')) ensureStockList();
 
 // 初始計算
 ce(); cf(); cd(); cp(); cs();
