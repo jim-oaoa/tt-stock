@@ -297,9 +297,11 @@ table.cmp tr:hover td{background:var(--card2)}
 <!-- ── Tab 2: Fish ── -->
 <div class="pane" id="pane-fish">
   <div class="note">
-    <strong>TT 魚模型公式：</strong>調整淨值 = 每股淨值 + 其他權益項目（通常為負值）。
-    基準值 = 調整淨值 × (調整ROE ÷ 10%)。
-    魚頭（×0.85~1.0，便宜）→ 魚身（×1.0~1.15，合理）→ 魚尾（×1.15~1.30，偏貴）→ 瘋狂價（×2.0）。
+    <strong>TT 魚模型公式：</strong>
+    調整淨值 = (歸母股東權益 − 其他權益) ÷ 流通在外股數。
+    調整ROE = 前四季歸母淨利 ÷ (四季前歸母權益 − 四季前其他權益)。
+    基準值：ROE≥10% → 調整淨值×ROE×10；8~10% → 調整淨值；ROE&lt;8% → 調整淨值×(ROE+2%)×10。
+    魚頭(×0.85~1.0) → 魚身(×1.0~1.15) → 魚尾(×1.15~1.30) → 魚骨(×1.30~2.0) → 瘋狂(×2.0+)。
   </div>
   <div class="presets">
     <button class="pbtn" onclick="lfp('tsmc')">台積電 2026Q1</button>
@@ -315,11 +317,11 @@ table.cmp tr:hover td{background:var(--card2)}
         </div>
         <div class="field"><label>其他權益項目（元，未實現損益等，通常為負）</label>
           <input type="number" id="other_eq" value="-1.44" step="0.01" oninput="cf()">
-          <div class="hint">調整淨值 = BPS + 此數（負值即扣除）</div>
+          <div class="hint">OCI 已自動計入 adjBPS；自動抓取後此欄為 0，可手動補填微調</div>
         </div>
         <div class="field"><label>調整後 ROE（%，前四季）</label>
           <input type="number" id="adj_roe" value="42.91" step="0.01" oninput="cf()">
-          <div class="hint">從財報 ROE 欄位取得；或≈前四季EPS ÷ 期初每股淨值×100</div>
+          <div class="hint">= 前四季歸母淨利 ÷ 四季前調整股東權益 × 100（自動推算）</div>
         </div>
         <div class="field"><label>目前股價（元）</label>
           <input type="number" id="cur_price" value="2085" oninput="cf()">
@@ -345,7 +347,8 @@ table.cmp tr:hover td{background:var(--card2)}
         <div class="rrow"><span class="lbl" style="color:var(--green)">🐟 魚頭</span><span class="val" style="color:var(--green)">基準×0.85~1.0　便宜、可大膽買</span></div>
         <div class="rrow"><span class="lbl" style="color:var(--accent)">🐟 魚身</span><span class="val" style="color:var(--accent)">基準×1.0~1.15　合理、正常持有</span></div>
         <div class="rrow"><span class="lbl" style="color:var(--orange)">🐟 魚尾</span><span class="val" style="color:var(--orange)">基準×1.15~1.30　偏貴、考慮調節</span></div>
-        <div class="rrow"><span class="lbl" style="color:var(--red)">🔥 瘋狂</span><span class="val" style="color:var(--red)">基準×2.0　極度泡沫警戒</span></div>
+        <div class="rrow"><span class="lbl" style="color:#e67e22">🦴 魚骨</span><span class="val" style="color:#e67e22">基準×1.30~2.0　不建議買，除非爆炸性成長</span></div>
+        <div class="rrow"><span class="lbl" style="color:var(--red)">🔥 瘋狂</span><span class="val" style="color:var(--red)">基準×2.0+　賣出，只保留零成本部位</span></div>
       </div>
     </div>
   </div>
@@ -542,13 +545,34 @@ function ce(){
 function cf(){
   const bps   = +v('bps')      || 0;
   const oeq   = +v('other_eq') || 0;
-  const roe   = +v('adj_roe')  || 0;
+  const roe   = +v('adj_roe')  || 0;  // %
   const price = +v('cur_price')|| 0;
 
-  const adjB = bps + oeq;
-  const mult = roe / 10;
-  const base = adjB * mult;
-  const z1lo=base*.85, z1hi=base, z2hi=base*1.15, z3hi=base*1.30, crazy=base*2;
+  const adjB = bps + oeq;   // 調整淨值（元/股）
+  const r    = roe / 100;   // 轉小數
+
+  // ── 基準值：TT 3段公式 ──
+  // ROE ≥ 10%：基準值 = 調整淨值 × ROE × 10
+  // 8% ≤ ROE < 10%：基準值 = 調整淨值
+  // ROE < 8%：基準值 = 調整淨值 × (ROE+2%) × 10
+  let mult, base;
+  if(r >= 0.10){
+    mult = r * 10;
+    base = adjB * mult;
+  } else if(r >= 0.08){
+    mult = 1;
+    base = adjB;
+  } else {
+    mult = (r + 0.02) * 10;
+    base = adjB * mult;
+  }
+
+  // ── 5 魚帶邊界 ──
+  const z1lo = base * 0.85;   // 魚頭 low
+  const z1hi = base;          // 魚頭 hi / 魚身 low
+  const z2hi = base * 1.15;   // 魚身 hi / 魚尾 low
+  const z3hi = base * 1.30;   // 魚尾 hi / 魚骨 low
+  const z4hi = base * 2.00;   // 魚骨 hi / 瘋狂 起點
 
   document.getElementById('f-adjbps').textContent = adjB.toFixed(2)+' 元';
   document.getElementById('f-roe').textContent    = roe.toFixed(2)+'%';
@@ -556,24 +580,26 @@ function cf(){
   document.getElementById('f-base').textContent   = base.toFixed(2)+' 元';
   document.getElementById('f-price-disp').textContent = price ? price+' 元' : '—';
 
+  // ── 區間判斷 ──
   let zone='—', zc='var(--accent)';
-  if(price>0){
-    if(price<z1lo)    {zone='⬇ 低於魚頭（超便宜）';zc='#6fcf97';}
-    else if(price<=z1hi){zone='🐟 魚頭區（便宜）';  zc='#6fcf97';}
-    else if(price<=z2hi){zone='🐟 魚身區（合理）';  zc='var(--accent)';}
-    else if(price<=z3hi){zone='🐟 魚尾區（偏貴）';  zc='var(--orange)';}
-    else if(price<crazy){zone='⚠ 接近瘋狂價';       zc='var(--orange)';}
-    else               {zone='🔥 瘋狂價（警戒）';   zc='var(--red)';}
+  if(price > 0){
+    if     (price <  z1lo) {zone='⬇ 低於魚頭（超便宜）';    zc='#27ae60';}
+    else if(price <= z1hi) {zone='🐟 魚頭區（便宜可買）';    zc='#6fcf97';}
+    else if(price <= z2hi) {zone='🐟 魚身區（合理持有）';    zc='var(--accent)';}
+    else if(price <= z3hi) {zone='🐟 魚尾區（偏貴調節）';    zc='var(--orange)';}
+    else if(price <= z4hi) {zone='🦴 魚骨區（不建議買）';    zc='#e67e22';}
+    else                   {zone='🔥 瘋狂價（賣出留零成本）';zc='var(--red)';}
   }
   const zt=document.getElementById('f-zone-tag');
   zt.textContent=zone; zt.style.background=zc+'33'; zt.style.color=zc;
 
   const pctOfBase = base>0 ? (price/base*100).toFixed(1) : '—';
   document.getElementById('fish-zones').innerHTML =
-    fz('fz1','🐟 魚頭區','var(--green)',  z1lo.toFixed(1)+'~'+z1hi.toFixed(1)+' 元','×0.85~1.0')
-   +fz('fz2','🐟 魚身區','var(--accent)', z1hi.toFixed(1)+'~'+z2hi.toFixed(1)+' 元','×1.0~1.15')
-   +fz('fz3','🐟 魚尾區','var(--orange)', z2hi.toFixed(1)+'~'+z3hi.toFixed(1)+' 元','×1.15~1.30')
-   +fz('fz4','🔥 瘋狂價','var(--red)',    crazy.toFixed(1)+' 元','×2.0')
+    fz('fz1','🐟 魚頭區','var(--green)', z1lo.toFixed(1)+'~'+z1hi.toFixed(1)+' 元','×0.85~1.0')
+   +fz('fz2','🐟 魚身區','var(--accent)',z1hi.toFixed(1)+'~'+z2hi.toFixed(1)+' 元','×1.0~1.15')
+   +fz('fz3','🐟 魚尾區','var(--orange)',z2hi.toFixed(1)+'~'+z3hi.toFixed(1)+' 元','×1.15~1.30')
+   +fz('fz4','🦴 魚骨區','#e67e22',      z3hi.toFixed(1)+'~'+z4hi.toFixed(1)+' 元','×1.30~2.0')
+   +fz('fz5','🔥 瘋狂價','var(--red)',   '>'+z4hi.toFixed(1)+' 元',              '×2.0+')
    +(price>0?`<div style="margin-top:10px;padding:9px 15px;background:rgba(255,255,255,.04);border-radius:8px;font-size:12px;color:var(--muted)">
       目前股價 <b style="color:var(--text)">${price}</b> 元 = 基準值的 <b style="color:${zc}">${pctOfBase}%</b></div>`:'');
 }
@@ -718,7 +744,7 @@ async function fm_get(base, dataset, stockId, start, token){
 function populate(fsData, bsData, prData, stockId){
   let periodInfo='';
   const dbg=[];  // 診斷訊息
-  let eps = 0, bpsCalc = 0, ttmEps = 0; // 提升到外層，供 adj_roe 跨 block 使用
+  let eps = 0, bpsCalc = 0, ttmEps = 0, ttmPn = 0, adjPeq4 = 0; // 提升到外層
 
   // ── 股價 ──
   if(prData && prData.length>0){
@@ -748,10 +774,15 @@ function populate(fsData, bsData, prData, stockId){
     const latest=byPeriod[dates[0]];
     periodInfo += `　財報期間 ${dates[0]}`;
 
-    // TTM EPS = 最近 4 季累加（比單季 ×4 更能代表年度獲利）
+    // TTM EPS & TTM 歸母淨利（最近 4 季累加）
     const epsPickKeys = ['基本每股盈餘（元）','基本每股盈餘','每股盈餘','基本EPS'];
+    const pnPickKeys  = [
+      '歸屬於母公司業主之本期淨利（淨損）','母公司業主之淨利（淨損）',
+      '歸屬母公司淨利','母公司業主淨利','歸屬於母公司業主之損益'
+    ];
     const last4Dates = dates.slice(0, 4);
     ttmEps = last4Dates.reduce((sum, d) => sum + pick(byPeriod[d], epsPickKeys), 0);
+    ttmPn  = last4Dates.reduce((sum, d) => sum + pick(byPeriod[d], pnPickKeys) / 1e8, 0); // 億
 
     // 診斷：顯示最新期間有哪些欄位
     const fsKeys=Object.keys(latest);
@@ -836,57 +867,82 @@ function populate(fsData, bsData, prData, stockId){
 
     const ta  = pick(latest,['資產總計','資產總額','資產合計','合計']) / 1e8;
     const teq = pick(latest,[
-      '權益總額','權益總計','股東權益合計','權益合計','股東權益總額',
-      '本期權益合計'
+      '權益總額','權益總計','股東權益合計','權益合計','股東權益總額','本期權益合計'
     ]) / 1e8;
     const peq = pick(latest,[
-      '歸屬於母公司業主之權益合計',
-      '母公司業主之權益合計',
-      '歸屬母公司業主之權益合計',
-      '歸屬母公司業主之權益','母公司業主權益'
+      '歸屬於母公司業主之權益合計','母公司業主之權益合計',
+      '歸屬母公司業主之權益合計','歸屬母公司業主之權益','母公司業主權益'
     ]) / 1e8;
-    const cs  = pick(latest,[
-      '普通股股本','股本','股本合計'
-    ]);  // 元原始值（面額10元/股）
+    const cs  = pick(latest,['普通股股本','股本','股本合計']);  // 元（面額10元/股）
 
-    const sharesZ = cs>0 ? Math.round(cs/10000) : 0;  // 元÷10(面額)÷1000(股/張)=張
-    const useEq   = peq>0 ? peq : teq;
-    // BPS(元/張) = 歸母權益(億) × 1e8 ÷ (張 × 1000)
-    bpsCalc = sharesZ>0 ? (useEq*1e8/(sharesZ*1000)).toFixed(2) : 0;
+    // ── 庫藏股票（流通在外股數 = 發行股數 - 庫藏股數）──
+    const trsry = pick(latest,['庫藏股票','庫藏股']);  // 元（正值，為扣除項）
+    const netCap = trsry > 0 ? Math.max(cs - trsry, 0) : cs;
+    const sharesZ = netCap > 0 ? Math.round(netCap/10000) :
+                    (cs   > 0 ? Math.round(cs/10000)    : 0);
 
-    dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本(元)=${cs||'❌'} → ${sharesZ.toLocaleString()}張 | BPS=${bpsCalc||'❌'}`);
+    // ── 其他權益項目 (OCI) ──
+    const ociRaw = pick(latest,[
+      '其他權益','其他綜合損益累計數','金融商品未實現損益累計數','換算差異數累計數'
+    ]);  // 元原始值（通常為負）
+    const ociAmt = ociRaw / 1e8;  // 億
+
+    // ── 調整淨值 = (歸母權益 − 其他權益) ÷ 流通股數 ──
+    const useEq  = peq>0 ? peq : teq;
+    const adjPeq = useEq - ociAmt;  // 億
+    bpsCalc = sharesZ>0 ? (adjPeq*1e8/(sharesZ*1000)).toFixed(2) : 0;
+
+    // ── 4季前的調整權益（adj_roe 分母）──
+    const idx4   = Math.min(4, dates.length-1);
+    const p4     = byPeriod[dates[idx4]] || {};
+    const peq4   = pick(p4,['歸屬於母公司業主之權益合計','母公司業主之權益合計',
+                   '歸屬母公司業主之權益合計','歸屬母公司業主之權益','母公司業主權益']) / 1e8;
+    const teq4   = pick(p4,['權益總額','權益總計','股東權益合計','權益合計',
+                   '股東權益總額','本期權益合計']) / 1e8;
+    const oci4   = pick(p4,['其他權益','其他綜合損益累計數','金融商品未實現損益累計數',
+                   '換算差異數累計數']) / 1e8;
+    adjPeq4 = ((peq4>0?peq4:teq4) - oci4);  // 億（提升到外層 let）
+
+    dbg.push(`　　總資產=${ta>0?ta.toFixed(0)+'億':'❌'} | 股東權益=${teq>0?teq.toFixed(0)+'億':'❌'} | 股本=${cs||'❌'} 庫藏=${trsry||0} → ${sharesZ.toLocaleString()}張`);
+    dbg.push(`　　其他權益=${ociAmt.toFixed(1)}億 | 調整BPS=${bpsCalc||'❌'} | 4Q前調整權益=${adjPeq4.toFixed(1)}億(${dates[idx4]})`);
 
     if(ta>0)       setVal('d-assets', ta.toFixed(0));
     if(teq>0)      setVal('d-eq',     teq.toFixed(0));
     if(+bpsCalc>0){ setVal('bps', bpsCalc); setVal('p-bps', bpsCalc); }
     if(sharesZ>0){ setVal('shares_z', sharesZ); setVal('sh-now', sharesZ); }
 
-    if(cs===0){
+    if(!cs){
       dbg.push('　　⚠️ 找不到股本欄位，回傳欄位：'+bsKeys.slice(0,12).join('、')+(bsKeys.length>12?'…':''));
     }
   } else {
     dbg.push('⚠️ 資產負債表：回傳 0 筆');
   }
 
-  // ── 魚模型：自動推算 adj_roe，避免殘留上支股票的數值 ──
-  // 優先用 TTM（最近 4 季 EPS 累加）；只有 1 筆資料才退回「季 × 4」
-  setVal('other_eq', '0');  // 其他權益項目各股不同，API無法取得，重置為0
+  // ── 魚模型：自動推算 adj_roe（TT 原始公式）──
+  // 正確：前四季歸母淨利(TTM pn) ÷ (四季前歸母權益 - 四季前其他權益)
+  // 退回1：TTM EPS ÷ 調整BPS
+  // 退回2：最新季 EPS × 4 ÷ 調整BPS
+  setVal('other_eq', '0');  // OCI 已計入 adjBps，此欄歸零
   if(+bpsCalc > 0){
-    if(ttmEps > 0){
-      // TTM EPS ÷ BPS（4 季累加，無需再 ×4）
-      const roAuto = (ttmEps / +bpsCalc * 100).toFixed(2);
-      setVal('adj_roe', roAuto);
-      dbg.push(`　魚模型 adj_ROE(TTM)：${ttmEps.toFixed(2)} ÷ BPS ${bpsCalc} = ${roAuto}%`);
+    let roAuto = 0, roLabel = '';
+    if(ttmPn > 0 && adjPeq4 > 0){
+      roAuto = (ttmPn / adjPeq4 * 100).toFixed(2);
+      roLabel = `TTM淨利${ttmPn.toFixed(1)}億÷4Q前調整權益${adjPeq4.toFixed(1)}億`;
+    } else if(ttmEps > 0){
+      roAuto = (ttmEps / +bpsCalc * 100).toFixed(2);
+      roLabel = `TTM EPS${ttmEps.toFixed(2)}÷調整BPS${bpsCalc}（退回）`;
     } else if(eps > 0){
-      // 退回：只有一季資料，×4 年化
-      const roAuto = (+eps * 4 / +bpsCalc * 100).toFixed(2);
+      roAuto = (+eps * 4 / +bpsCalc * 100).toFixed(2);
+      roLabel = `Q EPS${eps}×4÷調整BPS（退回）`;
+    }
+    if(+roAuto > 0){
       setVal('adj_roe', roAuto);
-      dbg.push(`　魚模型 adj_ROE（季×4）：EPS ${eps}×4 ÷ BPS ${bpsCalc} = ${roAuto}%`);
+      dbg.push(`　魚模型 adj_ROE：${roLabel} = ${roAuto}%`);
     } else {
       setVal('adj_roe', '0');
     }
   } else {
-    setVal('adj_roe', '0');  // 無法計算時重置，避免顯示舊股票數值
+    setVal('adj_roe', '0');
   }
 
   // 顯示診斷訊息
