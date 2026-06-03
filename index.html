@@ -367,8 +367,11 @@ table.cmp tr:hover td{background:var(--card2)}
     </div>
     <div>
       <div class="price-bar">
-        <div><div style="color:var(--muted);font-size:11px">目前股價</div>
-          <div class="pb-price" id="f-price-disp">—</div></div>
+        <div>
+          <div style="color:var(--muted);font-size:11px">目前股價</div>
+          <div id="f-stock-name" style="font-size:13px;font-weight:600;color:var(--head);margin:2px 0 1px;display:none"></div>
+          <div class="pb-price" id="f-price-disp">—</div>
+        </div>
         <span class="zone-tag" id="f-zone-tag"></span>
       </div>
       <div id="fish-zones"></div>
@@ -774,6 +777,13 @@ async function fetchData(){
 
     // ── 儲存最近搜尋 ──
     saveRecentStock(stock, stockName);
+
+    // ── 更新目前股價區的股票名稱 ──
+    const stockNameEl = document.getElementById('f-stock-name');
+    if(stockNameEl){
+      stockNameEl.textContent = `${stockName}（${stock}）`;
+      stockNameEl.style.display = 'block';
+    }
 
     // ── 更新魚模型股票標頭 ──
     const fishHdr = document.getElementById('fish-stock-header');
