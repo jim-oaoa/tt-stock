@@ -779,7 +779,7 @@ async function fetchData(){
     const fishHdr = document.getElementById('fish-stock-header');
     if(fishHdr){
       const price  = document.getElementById('cur_price')?.value || '';
-      const period = info.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '';
+      const period = info.match(/財報期間\s+(\d{4}-\d{2}-\d{2})/)?.[1] || '';
       fishHdr.style.display = 'flex';
       fishHdr.innerHTML =
         `<span class="fsh-name">📊 ${stockName}</span>`+
