@@ -11,6 +11,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TT 股票分析工具｜魚模型 · EPS · 杜邦</title>
+<!-- Chart.js + date adapter (歷史走勢圖) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
 :root {
   --bg:#0f1117; --card:#1a1d27; --card2:#22263a; --border:#2e3352;
@@ -245,6 +248,7 @@ table.cmp tr:hover td{background:var(--card2)}
   <div class="tab" onclick="sw('dupont')">③ 杜邦分析</div>
   <div class="tab" onclick="sw('per')">④ 本益比評估</div>
   <div class="tab" onclick="sw('shares')">⑤ 股本稀釋</div>
+  <div class="tab" onclick="sw('history')">⑥ 歷史走勢</div>
 </div>
 
 <div class="content">
@@ -488,6 +492,20 @@ table.cmp tr:hover td{background:var(--card2)}
         <div id="dil-eps"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ── Tab 6: History Chart ── -->
+<div class="pane" id="pane-history">
+  <div class="note" id="history-note">
+    📊 抓取股票資料後，此頁將自動顯示<strong>近 3 年股價 vs 魚模型歷史估值帶</strong>。<br>
+    彩色階梯線 = 每季財報更新的魚模型區間；藍色曲線 = 實際收盤股價。
+  </div>
+  <div id="history-chart-wrap" style="position:relative;height:480px;display:none">
+    <canvas id="history-chart"></canvas>
+  </div>
+  <div id="history-empty" style="text-align:center;padding:80px 0;color:var(--muted)">
+    ⬆ 請先在上方輸入股票代碼並按「抓取」
   </div>
 </div>
 
@@ -778,6 +796,9 @@ async function fetchData(){
     // ── 儲存最近搜尋 ──
     saveRecentStock(stock, stockName);
 
+    // ── 歷史走勢圖 ──
+    renderHistoryChart(prR, bsR, fsR, stock, stockName);
+
     // ── 更新目前股價區的股票名稱 ──
     const stockNameEl = document.getElementById('f-stock-name');
     if(stockNameEl){
@@ -1061,6 +1082,108 @@ function rr(lbl,val,cls=''){
 function fz(cls,name,color,range,tag){
   return `<div class="fish-zone ${cls}"><div><div class="zname" style="color:${color}">${name}</div><div class="zrange" style="color:${color}">${range}</div></div><div class="ztag">${tag}</div></div>`;
 }
+// ══ 歷史走勢圖 ══
+function renderHistoryChart(prData, bsData, fsData, stockId, stockName){
+  const wrap  = document.getElementById('history-chart-wrap');
+  const empty = document.getElementById('history-empty');
+  const canvas= document.getElementById('history-chart');
+  if(!canvas || !prData || !bsData || !fsData) return;
+
+  // ── 常數 ──
+  const PEQ_K=['歸屬於母公司業主之權益合計','母公司業主之權益合計','歸屬母公司業主之權益合計','歸屬母公司業主之權益','母公司業主權益'];
+  const TEQ_K=['權益總額','權益總計','股東權益合計','權益合計','股東權益總額','本期權益合計'];
+  const OCI_K=['其他權益','其他綜合損益累計數','金融商品未實現損益累計數','換算差異數累計數'];
+  const PN_K =['淨利（淨損）歸屬於母公司業主','歸屬於母公司業主之本期淨利（淨損）','本期淨利（淨損）'];
+
+  // ── 1. 建立損益表期間 map ──
+  const fsMap={};
+  fsData.forEach(r=>{ if(!fsMap[r.date])fsMap[r.date]={}; fsMap[r.date][r.origin_name]=r.value; });
+  const fsDates=Object.keys(fsMap).sort();
+
+  // ── 2. 建立資產負債表期間 map（過濾 _per）──
+  const bsMap={};
+  bsData.forEach(r=>{ if(r.type&&r.type.endsWith('_per'))return; if(!bsMap[r.date])bsMap[r.date]={}; bsMap[r.date][r.origin_name]=r.value; });
+  const bsDates=Object.keys(bsMap).sort();
+
+  // ── 3. 計算每個季度的魚帶邊界 ──
+  const zones=[];
+  for(let i=0;i<bsDates.length;i++){
+    const d=bsDates[i], bl=bsMap[d];
+    const peq=pick(bl,PEQ_K)/1e8, teq=pick(bl,TEQ_K)/1e8;
+    const cs =pick(bl,['普通股股本','股本','股本合計']);
+    const trsry=pick(bl,['庫藏股票','庫藏股']);
+    const oci=pick(bl,OCI_K)/1e8;
+    const netCap=trsry>0?Math.max(cs-trsry,0):cs;
+    const sz=netCap>0?Math.round(netCap/10000):(cs>0?Math.round(cs/10000):0);
+    if(!sz) continue;
+    const useEq=peq>0?peq:teq;
+    const adjBps=(useEq-oci)*1e8/(sz*1000);
+    if(adjBps<=0) continue;
+
+    // 4季前調整權益
+    const p4i=Math.max(0,i-4), p4=bsMap[bsDates[p4i]]||{};
+    const peq4=pick(p4,PEQ_K)/1e8, teq4=pick(p4,TEQ_K)/1e8, oci4=pick(p4,OCI_K)/1e8;
+    const adjPeq4=(peq4>0?peq4:teq4)-oci4;
+
+    // 找到這個 BS 日期之前最近 4 季損益資料
+    const l4fs=fsDates.filter(fd=>fd<=d).slice(-4);
+    const ttmPn=l4fs.reduce((s,fd)=>s+pick(fsMap[fd],PN_K)/1e8,0);
+
+    let adjRoe=0;
+    if(ttmPn>0&&adjPeq4>0) adjRoe=ttmPn/adjPeq4;
+    const r=adjRoe;
+    let base;
+    if(r>=0.10) base=adjBps*r*10;
+    else if(r>=0.08) base=adjBps;
+    else base=adjBps*(r+0.02)*10;
+    if(!base||base<=0) continue;
+
+    zones.push({ date:d, base, z1lo:+(base*.85).toFixed(2), z1hi:+base.toFixed(2),
+      z2hi:+(base*1.15).toFixed(2), z3hi:+(base*1.30).toFixed(2), z4hi:+(base*2).toFixed(2) });
+  }
+  if(!zones.length){ if(empty)empty.style.display='block'; if(wrap)wrap.style.display='none'; return; }
+
+  // ── 4. 準備股價資料 ──
+  const priceData=prData.filter(r=>r.close||r.Close).map(r=>({x:r.date,y:+(r.close||r.Close)}));
+
+  // ── 5. 區間線資料（階梯，每季一個點）──
+  const mkZ=key=>zones.map(q=>({x:q.date,y:q[key]}));
+
+  // ── 6. 銷毀舊圖 ──
+  if(window._histChart){ window._histChart.destroy(); window._histChart=null; }
+
+  // ── 7. 畫圖 ──
+  if(wrap) wrap.style.display='block';
+  if(empty) empty.style.display='none';
+
+  const ctx=canvas.getContext('2d');
+  window._histChart=new Chart(ctx,{
+    type:'line',
+    data:{ datasets:[
+      {label:'📈 股價',   data:priceData,    borderColor:'#4f8ef7',borderWidth:2,pointRadius:0,tension:0.1,order:1},
+      {label:'🔥 瘋狂(×2.0)',data:mkZ('z4hi'),borderColor:'#eb5757',borderWidth:1.5,pointRadius:3,stepped:'before',fill:false,order:2},
+      {label:'🦴 魚骨(×1.30)',data:mkZ('z3hi'),borderColor:'#e67e22',borderWidth:1.5,pointRadius:3,stepped:'before',fill:false,order:3},
+      {label:'🐟 魚尾(×1.15)',data:mkZ('z2hi'),borderColor:'#f2994a',borderWidth:1,  pointRadius:3,stepped:'before',fill:false,order:4},
+      {label:'⬜ 基準(×1.0)', data:mkZ('z1hi'),borderColor:'#8892b0',borderWidth:2,  pointRadius:3,stepped:'before',fill:false,order:5},
+      {label:'🐟 魚頭(×0.85)',data:mkZ('z1lo'),borderColor:'#6fcf97',borderWidth:1,  pointRadius:3,stepped:'before',fill:false,order:6},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#8892b0',font:{size:11},boxWidth:16}},
+        title:{display:true,text:`${stockId} ${stockName} — 股價 vs 魚模型估值帶（近 3 年）`,color:'#ccd6f6',font:{size:14,weight:'bold'}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y?.toFixed(1)} 元`}}
+      },
+      scales:{
+        x:{type:'time',time:{unit:'month',displayFormats:{month:'yy-MM'}},
+           ticks:{color:'#8892b0',maxTicksLimit:18,maxRotation:0},grid:{color:'#2e3352'}},
+        y:{ticks:{color:'#8892b0',callback:v=>v+' 元'},grid:{color:'#2e3352'}}
+      }
+    }
+  });
+}
+
 // ══ 最近搜尋 ══
 function saveRecentStock(code, name){
   let arr=[];
