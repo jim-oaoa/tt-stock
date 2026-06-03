@@ -1214,9 +1214,13 @@ function fetchByCode(code){
 function sw(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
-  const idx=['eps','fish','dupont','per','shares'].indexOf(name);
-  document.querySelectorAll('.tab')[idx].classList.add('active');
-  document.getElementById('pane-'+name).classList.add('active');
+  const idx=['eps','fish','dupont','per','shares','history'].indexOf(name);  // ← 加 history
+  if(idx>=0) document.querySelectorAll('.tab')[idx].classList.add('active');
+  document.getElementById('pane-'+name)?.classList.add('active');
+  // 歷史走勢：chart 在隱藏狀態渲染時 canvas=0×0，切換後需強制 resize
+  if(name==='history' && window._histChart){
+    setTimeout(()=>window._histChart.resize(), 50);
+  }
 }
 
 // ── 啟動：從 localStorage 還原 token/stock ──
