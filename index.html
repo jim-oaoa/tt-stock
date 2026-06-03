@@ -298,9 +298,11 @@ table.cmp tr:hover td{background:var(--card2)}
 <div class="pane" id="pane-fish">
   <div class="note">
     <strong>TT 魚模型公式：</strong>
-    調整淨值 = (歸母股東權益 − 其他權益) ÷ 流通在外股數。
-    調整ROE = 前四季歸母淨利 ÷ (四季前歸母權益 − 四季前其他權益)。
-    基準值：ROE≥10% → 調整淨值×ROE×10；8~10% → 調整淨值；ROE&lt;8% → 調整淨值×(ROE+2%)×10。
+    調整淨值 = (歸母股東權益 − 其他權益OCI) ÷ 流通在外股數。
+    調整ROE = 前四季歸母淨利 ÷ (四季前歸母權益 − 四季前OCI)。
+    <strong>預估未來四季EPS = 調整淨值 × 調整ROE</strong>（可手動微調，如法說會後更新稅率）。
+    基準值 = 預估EPS × 10倍本益比；瘋狂價 = 預估EPS × 20倍。
+    ROE&lt;10%時基準值有保護公式：8~10%→調整淨值；&lt;8%→調整淨值×(ROE+2%)×10。
     魚頭(×0.85~1.0) → 魚身(×1.0~1.15) → 魚尾(×1.15~1.30) → 魚骨(×1.30~2.0) → 瘋狂(×2.0+)。
   </div>
   <div class="presets">
@@ -323,6 +325,10 @@ table.cmp tr:hover td{background:var(--card2)}
           <input type="number" id="adj_roe" value="42.91" step="0.01" oninput="cf()">
           <div class="hint">= 前四季歸母淨利 ÷ 四季前調整股東權益 × 100（自動推算）</div>
         </div>
+        <div class="field"><label>🔧 手動預估未來四季 EPS（元，選填）</label>
+          <input type="number" id="fwd_eps" value="0" step="0.01" oninput="cf()">
+          <div class="hint">留 0 = 自動推算（調整淨值×調整ROE）；填入→覆蓋為 EPS×10 作基準值（法說會/稅率微調用）</div>
+        </div>
         <div class="field"><label>目前股價（元）</label>
           <input type="number" id="cur_price" value="2085" oninput="cf()">
         </div>
@@ -331,8 +337,10 @@ table.cmp tr:hover td{background:var(--card2)}
         <h3><span class="dot" style="background:var(--green)"></span>模型參數</h3>
         <div class="rrow"><span class="lbl">調整淨值</span><span class="val b" id="f-adjbps">—</span></div>
         <div class="rrow"><span class="lbl">調整 ROE</span><span class="val" id="f-roe">—</span></div>
-        <div class="rrow"><span class="lbl">ROE 倍率（÷10%）</span><span class="val" id="f-mult">—</span></div>
-        <div class="rrow"><span class="lbl">基準值</span><span class="val o" id="f-base">—</span></div>
+        <div class="rrow"><span class="lbl">📌 預估未來四季 EPS</span><span class="val b" id="f-pred-eps" style="color:var(--green)">—</span></div>
+        <div class="rrow"><span class="lbl" style="font-size:10px;color:var(--muted)">  基準值 = 預估EPS × 10倍本益比</span><span class="val" id="f-mult" style="font-size:10px;color:var(--muted)">—</span></div>
+        <div class="rrow"><span class="lbl">基準值（10× EPS）</span><span class="val o" id="f-base">—</span></div>
+        <div class="rrow"><span class="lbl" style="color:var(--red)">瘋狂價（20× EPS）</span><span class="val" style="color:var(--red)" id="f-crazy">—</span></div>
       </div>
     </div>
     <div>
@@ -543,28 +551,38 @@ function ce(){
 //  魚模型
 // ══════════════════════════════════════════════
 function cf(){
-  const bps   = +v('bps')      || 0;
-  const oeq   = +v('other_eq') || 0;
-  const roe   = +v('adj_roe')  || 0;  // %
-  const price = +v('cur_price')|| 0;
+  const bps     = +v('bps')      || 0;
+  const oeq     = +v('other_eq') || 0;
+  const roe     = +v('adj_roe')  || 0;  // %
+  const price   = +v('cur_price')|| 0;
+  const fwdEps  = +v('fwd_eps')  || 0;  // 手動預估 EPS（選填）
 
   const adjB = bps + oeq;   // 調整淨值（元/股）
   const r    = roe / 100;   // 轉小數
 
-  // ── 基準值：TT 3段公式 ──
-  // ROE ≥ 10%：基準值 = 調整淨值 × ROE × 10
-  // 8% ≤ ROE < 10%：基準值 = 調整淨值
-  // ROE < 8%：基準值 = 調整淨值 × (ROE+2%) × 10
-  let mult, base;
-  if(r >= 0.10){
-    mult = r * 10;
-    base = adjB * mult;
-  } else if(r >= 0.08){
-    mult = 1;
-    base = adjB;
+  // ── 機械推算預估 EPS（調整淨值 × 調整ROE）──
+  const mechEps = adjB * r;  // 無論哪段公式，這是「模型認為的未來EPS」
+
+  // ── 基準值：優先用手動 EPS；否則用 TT 3段公式 ──
+  let mult, base, predEps;
+  if(fwdEps > 0){
+    // 專家模式：直接 EPS × 10
+    predEps = fwdEps;
+    base    = fwdEps * 10;
+    mult    = adjB > 0 ? base / adjB : 0;
   } else {
-    mult = (r + 0.02) * 10;
-    base = adjB * mult;
+    // 自動模式：3段公式
+    predEps = mechEps;
+    if(r >= 0.10){
+      mult = r * 10;
+      base = adjB * mult;
+    } else if(r >= 0.08){
+      mult = 1;
+      base = adjB;
+    } else {
+      mult = (r + 0.02) * 10;
+      base = adjB * mult;
+    }
   }
 
   // ── 5 魚帶邊界 ──
@@ -574,10 +592,13 @@ function cf(){
   const z3hi = base * 1.30;   // 魚尾 hi / 魚骨 low
   const z4hi = base * 2.00;   // 魚骨 hi / 瘋狂 起點
 
-  document.getElementById('f-adjbps').textContent = adjB.toFixed(2)+' 元';
-  document.getElementById('f-roe').textContent    = roe.toFixed(2)+'%';
-  document.getElementById('f-mult').textContent   = mult.toFixed(2)+'×';
-  document.getElementById('f-base').textContent   = base.toFixed(2)+' 元';
+  document.getElementById('f-adjbps').textContent  = adjB.toFixed(2)+' 元';
+  document.getElementById('f-roe').textContent     = roe.toFixed(2)+'%';
+  document.getElementById('f-pred-eps').textContent= predEps.toFixed(3)+' 元'+(fwdEps>0?' ✍️手動':'');
+  document.getElementById('f-mult').textContent    = `= ${predEps.toFixed(3)} × 10 = ${base.toFixed(2)}`;
+  document.getElementById('f-base').textContent    = base.toFixed(2)+' 元';
+  const crazyEl = document.getElementById('f-crazy');
+  if(crazyEl) crazyEl.textContent = z4hi.toFixed(2)+' 元 (20× EPS)';
   document.getElementById('f-price-disp').textContent = price ? price+' 元' : '—';
 
   // ── 區間判斷 ──
@@ -927,6 +948,7 @@ function populate(fsData, bsData, prData, stockId){
   // 退回1：TTM EPS ÷ 調整BPS
   // 退回2：最新季 EPS × 4 ÷ 調整BPS
   setVal('other_eq', '0');  // OCI 已計入 adjBps，此欄歸零
+  setVal('fwd_eps',  '0');  // 換股時清除手動預估 EPS
   if(+bpsCalc > 0){
     let roAuto = 0, roLabel = '';
     if(ttmPn > 0 && adjPeq4 > 0){
